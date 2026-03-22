@@ -6,12 +6,11 @@ from typing import Any
 
 import google_auth_oauthlib.flow
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from jose import jwt
 
-from auth.deps import get_current_business
-from auth.tokens import clear_business_tokens, get_business_by_id, upsert_business_tokens
+from auth.tokens import upsert_business_tokens
 from config import (
     FRONTEND_ORIGIN,
     GOOGLE_CLIENT_ID,
@@ -46,10 +45,11 @@ def create_google_flow(state: str | None = None):
     return flow
 
 
-def create_session_token(business_id: str, email: str) -> str:
+def create_session_token(business_id: str, email: str, contact_name: str | None = None) -> str:
     payload = {
         "business_id": business_id,
         "email": email,
+        "contact_name": contact_name,
         "exp": datetime.utcnow() + timedelta(days=7),
     }
     return jwt.encode(payload, os.getenv("JWT_SECRET"), algorithm="HS256")
@@ -96,7 +96,7 @@ def consume_oauth_state(state: str) -> None:
 
 def fetch_google_userinfo(access_token: str) -> dict[str, Any]:
     response = requests.get(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
+        "https://www.googleapis.com/oauth2/v1/userinfo",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=20,
     )
@@ -113,7 +113,6 @@ def fetch_google_userinfo(access_token: str) -> dict[str, Any]:
 
 
 @router.get("/auth/google")
-@router.get("/auth/gmail")
 @limiter.limit("10/minute")
 async def auth_google(request: Request) -> JSONResponse:
     state = secrets.token_urlsafe(32)
@@ -128,7 +127,6 @@ async def auth_google(request: Request) -> JSONResponse:
 
 
 @router.get("/auth/google/callback")
-@router.get("/auth/gmail/callback")
 @limiter.limit("10/minute")
 async def auth_google_callback(request: Request) -> HTMLResponse:
     if request.query_params.get("error"):
@@ -163,10 +161,15 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
         refresh_token=refresh_token,
         token_expiry=token_expiry,
         business_name=userinfo.get("name"),
+        contact_name=userinfo.get("given_name"),
     )
 
     business_id = str(business["id"])
-    session_token = create_session_token(business_id, userinfo["email"])
+    session_token = create_session_token(
+        business_id,
+        userinfo["email"],
+        business.get("contact_name") or userinfo.get("given_name"),
+    )
     return HTMLResponse(
         f"""
         <!doctype html>
@@ -191,13 +194,3 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
         """
     )
 
-
-@router.post("/auth/google/disconnect")
-async def disconnect_google(business_id: str = Depends(get_current_business)) -> dict[str, Any]:
-    business = get_business_by_id(business_id)
-
-    if not business:
-        raise HTTPException(status_code=404, detail="Business not found.")
-
-    clear_business_tokens(business_id)
-    return {"success": True, "google": False, "business_id": business_id}

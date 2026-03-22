@@ -1,6 +1,7 @@
 import base64
 import hmac
 import json
+import logging
 import os
 from typing import Any
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from rate_limit import limiter
 
 router = APIRouter(tags=["gmail-webhook"])
+logger = logging.getLogger("olivander")
 
 
 def _decode_pubsub_message(payload: dict[str, Any]) -> dict[str, Any]:
@@ -21,8 +23,9 @@ def _decode_pubsub_message(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         decoded = base64.b64decode(raw_data)
         return json.loads(decoded.decode("utf-8"))
-    except Exception:
-        return {}
+    except Exception as error:
+        logger.error("Webhook decode error: %s", error)
+        raise HTTPException(status_code=400, detail="Invalid webhook payload") from error
 
 
 @router.post("/webhook/gmail")

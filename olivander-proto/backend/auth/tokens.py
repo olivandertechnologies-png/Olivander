@@ -7,23 +7,15 @@ from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-from db.supabase import get_supabase_client
+from db.supabase import (
+    get_business_by_email,
+    get_business_by_id,
+    update_tokens,
+    upsert_business,
+)
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _fernet = Fernet(os.getenv("ENCRYPTION_KEY").encode())
-
-
-def _normalise_row(data: Any) -> dict[str, Any] | None:
-    if not data:
-        return None
-
-    if isinstance(data, list):
-        return data[0] if data else None
-
-    if isinstance(data, dict):
-        return data
-
-    return None
 
 
 def _parse_timestamp(value: str | None) -> datetime | None:
@@ -63,30 +55,6 @@ def _get_decrypted_tokens(business: dict[str, Any]) -> tuple[str | None, str | N
     )
 
 
-def get_business_by_id(business_id: str) -> dict[str, Any] | None:
-    response = (
-        get_supabase_client()
-        .table("businesses")
-        .select("*")
-        .eq("id", business_id)
-        .limit(1)
-        .execute()
-    )
-    return _normalise_row(response.data)
-
-
-def get_business_by_email(email: str) -> dict[str, Any] | None:
-    response = (
-        get_supabase_client()
-        .table("businesses")
-        .select("*")
-        .eq("email", email)
-        .limit(1)
-        .execute()
-    )
-    return _normalise_row(response.data)
-
-
 def upsert_business_tokens(
     *,
     email: str,
@@ -94,28 +62,25 @@ def upsert_business_tokens(
     refresh_token: str | None,
     token_expiry: datetime | None,
     business_name: str | None = None,
+    contact_name: str | None = None,
 ) -> dict[str, Any]:
     existing = get_business_by_email(email)
-    existing_refresh_token = _decrypt(existing.get("refresh_token")) if existing and existing.get("refresh_token") else None
+    existing_refresh_token = (
+        _decrypt(existing.get("refresh_token"))
+        if existing and existing.get("refresh_token")
+        else None
+    )
     payload = {
         "email": email,
-        "business_name": business_name or existing.get("business_name") if existing else business_name,
+        "business_name": business_name or (existing.get("business_name") if existing else None),
+        "contact_name": contact_name or (existing.get("contact_name") if existing else None),
         "access_token": _encrypt(access_token),
         "refresh_token": _encrypt(refresh_token or existing_refresh_token),
         "token_expiry": token_expiry.astimezone(timezone.utc).isoformat() if token_expiry else None,
         "onboarded": existing.get("onboarded", False) if existing else False,
     }
 
-    response = (
-        get_supabase_client()
-        .table("businesses")
-        .upsert(payload, on_conflict="email")
-        .execute()
-    )
-    business = _normalise_row(response.data)
-
-    if not business:
-        business = get_business_by_email(email)
+    business = upsert_business(payload) or get_business_by_email(email)
 
     if not business:
         raise RuntimeError("Could not persist Google OAuth tokens in Supabase.")
@@ -124,19 +89,7 @@ def upsert_business_tokens(
 
 
 def clear_business_tokens(business_id: str) -> None:
-    (
-        get_supabase_client()
-        .table("businesses")
-        .update(
-            {
-                "access_token": None,
-                "refresh_token": None,
-                "token_expiry": None,
-            }
-        )
-        .eq("id", business_id)
-        .execute()
-    )
+    update_tokens(business_id, None, None, None)
 
 
 def _refresh_access_token(business: dict[str, Any]) -> str:
@@ -172,18 +125,11 @@ def _refresh_access_token(business: dict[str, Any]) -> str:
     token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     next_refresh_token = payload.get("refresh_token") or refresh_token
 
-    (
-        get_supabase_client()
-        .table("businesses")
-        .update(
-            {
-                "access_token": _encrypt(access_token),
-                "refresh_token": _encrypt(next_refresh_token),
-                "token_expiry": token_expiry.isoformat(),
-            }
-        )
-        .eq("id", business["id"])
-        .execute()
+    update_tokens(
+        str(business["id"]),
+        _encrypt(access_token),
+        _encrypt(next_refresh_token),
+        token_expiry.isoformat(),
     )
 
     return access_token

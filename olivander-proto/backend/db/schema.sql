@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
   business_name TEXT,
+  contact_name TEXT,
   access_token TEXT,
   refresh_token TEXT,
   token_expiry TIMESTAMPTZ,

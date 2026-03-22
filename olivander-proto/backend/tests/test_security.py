@@ -1,19 +1,21 @@
 import os
 
 from cryptography.fernet import Fernet
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-supabase-key")
-os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
+os.environ.setdefault("GROQ_API_KEY", "test-groq-api-key")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-value-with-32-chars")
 os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 os.environ.setdefault("WEBHOOK_SECRET", "test-webhook-secret")
 
+import auth.google as google_auth
 import main
-from auth.deps import create_session_token
+from auth.google import create_session_token
 
 client = TestClient(main.app)
 
@@ -30,11 +32,18 @@ def test_webhook_requires_secret() -> None:
     assert response.status_code == 403
 
 
-def test_oauth_callback_rejects_invalid_state() -> None:
+def test_oauth_callback_rejects_invalid_state(monkeypatch) -> None:
+    monkeypatch.setattr(google_auth, "store_oauth_state", lambda state: None)
+
+    def raise_invalid_state(state: str) -> None:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state.")
+
+    monkeypatch.setattr(google_auth, "consume_oauth_state", raise_invalid_state)
+
     auth_response = client.get("/auth/google")
 
     assert auth_response.status_code == 200
-    assert auth_response.cookies.get("olivander_oauth_state")
+    assert auth_response.json()["url"]
 
     callback_response = client.get(
         "/auth/google/callback",
@@ -48,6 +57,15 @@ def test_oauth_callback_rejects_invalid_state() -> None:
 
 def test_connections_returns_google_state_for_valid_jwt(monkeypatch) -> None:
     monkeypatch.setattr(main, "get_valid_token", lambda business_id: "valid-token")
+    monkeypatch.setattr(
+        main,
+        "get_business_by_id",
+        lambda business_id: {
+            "business_name": "Test Business",
+            "contact_name": "Ollie",
+            "email": "owner@example.com",
+        },
+    )
 
     response = client.get(
         "/api/connections",
@@ -55,4 +73,9 @@ def test_connections_returns_google_state_for_valid_jwt(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"google": True}
+    assert response.json() == {
+        "google": True,
+        "contact_name": "Ollie",
+        "business_name": "Test Business",
+        "email": "owner@example.com",
+    }

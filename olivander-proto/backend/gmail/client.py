@@ -88,47 +88,6 @@ def list_recent_messages(
     return [get_message(access_token, message["id"]) for message in message_refs if message.get("id")]
 
 
-def create_draft(
-    access_token: str,
-    *,
-    to_email: str,
-    subject: str,
-    body: str,
-    thread_id: str | None = None,
-) -> dict[str, Any]:
-    message = MIMEText(body)
-    message["To"] = to_email
-    message["Subject"] = subject
-    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
-    payload: dict[str, Any] = {
-        "message": {
-            "raw": encoded_message,
-        }
-    }
-
-    if thread_id:
-        payload["message"]["threadId"] = thread_id
-
-    response = requests.post(
-        f"{GMAIL_API_BASE_URL}/drafts",
-        json=payload,
-        headers={
-            **_gmail_headers(access_token),
-            "Content-Type": "application/json",
-        },
-        timeout=20,
-    )
-
-    if not response.ok:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gmail create draft failed with status {response.status_code}.",
-        )
-
-    return response.json()
-
-
 def send_message(
     access_token: str,
     *,
@@ -164,4 +123,3 @@ def send_message(
         )
 
     return response.json()
-

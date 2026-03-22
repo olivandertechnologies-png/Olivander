@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+.DS_Store
+*.db
 backend/.env
 backend/.env.*
 !backend/.env.example
@@ -10,4 +12,7 @@ frontend/.env.*
 !frontend/.env.example
 __pycache__/
 *.pyc
+.pytest_cache/
+logs/
+dist/
 backend/logs/

@@ -3,7 +3,7 @@ uvicorn
 websockets
 google-auth-oauthlib
 python-dotenv
-google-genai
+groq
 requests
 supabase
 cryptography

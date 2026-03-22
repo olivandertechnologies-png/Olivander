@@ -1,211 +1,102 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import OlivanderWand, { useWandState } from './components/OlivanderWand';
 
-const THEME_KEY = 'olivander-theme';
+const THEME_KEY = 'olivander_theme';
 const SESSION_KEY = 'olivander_session';
-const PROCESSED_EMAIL_IDS_KEY = 'olivander-processed-email-ids';
-const NOTIFICATION_TIMEOUT_MS = 5200;
-const INBOX_SYNC_INTERVAL_MS = 10000;
+const PROCESSED_EMAIL_IDS_KEY = 'olivander_processed_email_ids';
 const BACKEND_BASE_URL = (
   import.meta.env.VITE_API_URL ??
   import.meta.env.VITE_API_BASE_URL ??
   'http://localhost:8000'
 ).replace(/\/$/, '');
 const BACKEND_ORIGIN = new URL(BACKEND_BASE_URL).origin;
-
-const ACTION_TEMPLATES = {
-  'Draft an email': `Draft a warm email to [recipient] about [subject].
-Mention [key points] and aim to [outcome].`,
-  'Book a meeting': `Book a meeting with [person or team] about [topic].
-Try for [timing] for [duration], and mention [anything important].`,
-  'Chase invoice': `Follow up with [client] about invoice [number or amount], due [date].
-Keep it [warm or firm] and mention [context].`,
-  'Summarise inbox': `Summarise my inbox for [period], focusing on [clients, projects, or senders].
-Call out [urgent items, follow-ups, or blockers].`,
-  'Write a quote': `Write a quote for [client] for [service or scope].
-Use a budget of [amount or range], mention [timing], and include [anything important].`,
+const PANEL_TITLES = {
+  home: 'Home',
+  tasks: 'Tasks',
+  approvals: 'Approvals',
+  activity: 'Activity',
+  settings: 'Settings',
 };
-
-const QUICK_ACTIONS = Object.keys(ACTION_TEMPLATES);
-
-const MEMORY_FIELDS = [
-  {
-    key: 'business_name',
-    label: 'Business name',
-    placeholder: 'Olivander Technologies',
-  },
-  {
-    key: 'business_type',
-    label: 'Business type',
-    placeholder: 'Executive support studio',
-  },
-  {
-    key: 'owner_name',
-    label: 'Owner or operator',
-    placeholder: 'Michelle Olivander',
-  },
-  {
-    key: 'location',
-    label: 'Location',
-    placeholder: 'Auckland, New Zealand',
-  },
-  {
-    key: 'services',
-    label: 'Services',
-    placeholder: 'Inbox management, scheduling, client follow-ups',
-    multiline: true,
-  },
-  {
-    key: 'tone',
-    label: 'Communication tone',
-    placeholder: 'Warm, polished, and concise',
-    multiline: true,
-  },
-  {
-    key: 'sign_off',
-    label: 'Sign-off',
-    placeholder: 'Best, Olivander',
-  },
+const TASK_FILTERS = ['all', 'working', 'waiting', 'done'];
+const ACTIVITY_FILTERS = ['all', 'approved', 'auto', 'rejected'];
+const HOME_CHIPS = [
+  'Draft an email',
+  'Book a meeting',
+  'Chase invoice',
+  'Summarise inbox',
+  'Write a quote',
+];
+const DEFAULT_POPUP_CLOSE_MS = 120;
+const PANEL_EXIT_MS = 140;
+const PANEL_ENTER_MS = 180;
+const THEME_SWITCH_MS = 320;
+const APPROVAL_REMOVE_MS = 200;
+const PROCESSING_PULSE_MS = 1200;
+const PLAN_MOCK_DELAY_MS = 1200;
+const TASKS_AUTO_NAV_DELAY_MS = 800;
+const INBOX_SYNC_INTERVAL_MS = 10000;
+const RECENT_EMAILS_MAX = 12;
+const APPROVAL_FLASH_MS = 300;
+const SUCCESS_FLASH_MS = 3000;
+const ERROR_FLASH_MS = 5000;
+const USE_MOCK_AGENT_PLAN = false;
+const MOCK_PLAN = [
+  { description: 'Classify the request and identify intent', tier: 1 },
+  { description: 'Draft a reply based on business context', tier: 3 },
+  { description: 'Queue for your approval before sending', tier: 3 },
+];
+const MEMORY_KEYS = {
+  businessName: 'business_name',
+  ownerEmail: 'owner_email',
+  businessType: 'business_type',
+  pricingRange: 'pricing_range',
+  paymentTerms: 'payment_terms',
+  gstRegistered: 'gst_registered',
+  replyTone: 'reply_tone',
+  replyToneEdits: 'reply_tone_edits',
+  reschedulePolicy: 'reschedule_policy',
+  noShowHandling: 'no_show_handling',
+};
+const BUSINESS_PROFILE_ROWS = [
+  { key: MEMORY_KEYS.businessType, label: 'Business type' },
+  { key: MEMORY_KEYS.pricingRange, label: 'Pricing range' },
+  { key: MEMORY_KEYS.paymentTerms, label: 'Payment terms' },
+  { key: MEMORY_KEYS.gstRegistered, label: 'GST registered' },
+];
+const PREFERENCE_ROWS = [
+  { key: MEMORY_KEYS.replyTone, label: 'Reply tone' },
+  { key: MEMORY_KEYS.reschedulePolicy, label: 'Reschedule policy' },
+  { key: MEMORY_KEYS.noShowHandling, label: 'No-show handling' },
+];
+const SETTINGS_SECTIONS = [
+  { id: 'connections', label: 'Connections', icon: <LinkIcon /> },
+  { id: 'memory', label: 'Memory', icon: <DatabaseIcon /> },
+  { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
 ];
 
-function IconBase({ children }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 18 18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="app-icon"
-    >
-      {children}
-    </svg>
-  );
+function createId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function SparkIcon() {
-  return (
-    <IconBase>
-      <path d="M9 2.1 10.2 5l2.9 1.2-2.9 1.2L9 10.3 7.8 7.4 4.9 6.2 7.8 5 9 2.1Z" />
-      <path d="m13.2 10.7.55 1.35 1.35.55-1.35.55-.55 1.35-.55-1.35-1.35-.55 1.35-.55.55-1.35Z" />
-      <path d="m4.5 10.9.38.95.95.38-.95.38-.38.95-.38-.95-.95-.38.95-.38.38-.95Z" />
-    </IconBase>
-  );
+function buildBackendUrl(path) {
+  return `${BACKEND_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-function SunIcon() {
-  return (
-    <IconBase>
-      <circle cx="9" cy="9" r="3" />
-      <path d="M9 1.7v2" />
-      <path d="M9 14.3v2" />
-      <path d="M16.3 9h-2" />
-      <path d="M3.7 9h-2" />
-      <path d="m14.15 3.85-1.4 1.4" />
-      <path d="m5.25 12.75-1.4 1.4" />
-      <path d="m14.15 14.15-1.4-1.4" />
-      <path d="m5.25 5.25-1.4-1.4" />
-    </IconBase>
-  );
-}
+function trimToNull(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
 
-function MoonIcon() {
-  return (
-    <IconBase>
-      <path d="M11.85 2.5a6.55 6.55 0 1 0 3.65 11.95A7.1 7.1 0 0 1 11.85 2.5Z" />
-    </IconBase>
-  );
-}
-
-function MailIcon() {
-  return (
-    <IconBase>
-      <rect x="2.2" y="3.6" width="13.6" height="10.8" rx="2" />
-      <path d="m3.2 5 5.1 4 1.4 1.1L15 5" />
-    </IconBase>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <IconBase>
-      <circle cx="9" cy="9" r="6.2" />
-      <path d="m6.1 9.1 1.9 1.9 4-4.1" />
-    </IconBase>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <IconBase>
-      <circle cx="9" cy="9" r="6.2" />
-      <path d="M9 5.3v4.1l2.7 1.7" />
-    </IconBase>
-  );
-}
-
-function LinkIcon() {
-  return (
-    <IconBase>
-      <path d="M7.15 10.85 5.2 12.8a2.65 2.65 0 1 1-3.75-3.75L3.4 7.1" />
-      <path d="m10.85 7.15 1.95-1.95a2.65 2.65 0 0 1 3.75 3.75L14.6 10.9" />
-      <path d="M6.2 11.8 11.8 6.2" />
-    </IconBase>
-  );
-}
-
-function ArrowIcon() {
-  return (
-    <IconBase>
-      <path d="M3.2 9h10.1" />
-      <path d="m9.6 4.9 4.1 4.1-4.1 4.1" />
-    </IconBase>
-  );
-}
-
-function MessageIcon() {
-  return (
-    <IconBase>
-      <path d="M3.2 4.2h11.6v7.4H8.7L5.1 14v-2.4H3.2Z" />
-    </IconBase>
-  );
-}
-
-function ActivityIcon() {
-  return (
-    <IconBase>
-      <path d="M2.4 9h2.3l1.4-3.1 2.5 6.2 1.7-4.1h5.3" />
-    </IconBase>
-  );
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function getInitialTheme() {
   if (typeof window === 'undefined') {
-    return 'dark';
+    return 'light';
   }
 
-  return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
-}
-
-function getStoredProcessedEmailIds() {
-  if (typeof window === 'undefined') {
-    return new Set();
-  }
-
-  try {
-    const raw = window.localStorage.getItem(PROCESSED_EMAIL_IDS_KEY);
-
-    if (!raw) {
-      return new Set();
-    }
-
-    const ids = JSON.parse(raw);
-    return Array.isArray(ids) ? new Set(ids.map((id) => String(id))) : new Set();
-  } catch (error) {
-    console.error('Could not read stored email ids.', error);
-    return new Set();
-  }
+  return window.localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
 }
 
 function getStoredSession() {
@@ -213,8 +104,28 @@ function getStoredSession() {
     return null;
   }
 
-  const value = window.localStorage.getItem(SESSION_KEY);
-  return value ? value.trim() || null : null;
+  const stored = window.localStorage.getItem(SESSION_KEY);
+  return stored ? stored.trim() || null : null;
+}
+
+function decodeSessionPayload(sessionToken) {
+  if (!sessionToken) {
+    return null;
+  }
+
+  try {
+    const [, payload = ''] = String(sessionToken).split('.');
+    const normalised = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalised.padEnd(normalised.length + ((4 - (normalised.length % 4)) % 4), '=');
+
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+      return JSON.parse(window.atob(padded));
+    }
+
+    return JSON.parse(globalThis.atob(padded));
+  } catch {
+    return null;
+  }
 }
 
 function persistSession(sessionValue) {
@@ -230,63 +141,31 @@ function persistSession(sessionValue) {
   window.localStorage.setItem(SESSION_KEY, sessionValue);
 }
 
+function getStoredProcessedEmailIds() {
+  if (typeof window === 'undefined') {
+    return new Set();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PROCESSED_EMAIL_IDS_KEY);
+
+    if (!raw) {
+      return new Set();
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.map((value) => String(value))) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function persistProcessedEmailIds(ids) {
   if (typeof window === 'undefined') {
     return;
   }
 
   window.localStorage.setItem(PROCESSED_EMAIL_IDS_KEY, JSON.stringify(Array.from(ids)));
-}
-
-function createId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function buildBackendUrl(path) {
-  return `${BACKEND_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-}
-
-async function readResponseDetail(response, fallbackMessage) {
-  try {
-    const payload = await response.json();
-
-    if (payload?.detail) {
-      return String(payload.detail);
-    }
-  } catch (error) {
-    console.error('Could not parse backend error payload.', error);
-  }
-
-  return fallbackMessage;
-}
-
-function trimToNull(value) {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function normaliseTaskTitle(value) {
-  const trimmed = value.trim().replace(/\s+/g, ' ');
-
-  if (!trimmed) {
-    return 'New task';
-  }
-
-  const title = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return title.length > 48 ? `${title.slice(0, 45)}...` : title;
-}
-
-function createPlanStep(title, detail, tone = 'queued') {
-  return {
-    id: createId('step'),
-    title,
-    detail,
-    tone,
-  };
 }
 
 function formatRelativeTime(value) {
@@ -301,11 +180,11 @@ function formatRelativeTime(value) {
   }
 
   if (diff < 3_600_000) {
-    return `${Math.floor(diff / 60_000)}m ago`;
+    return `${Math.floor(diff / 60_000)} mins ago`;
   }
 
   if (diff < 86_400_000) {
-    return `${Math.floor(diff / 3_600_000)}h ago`;
+    return `${Math.floor(diff / 3_600_000)} hrs ago`;
   }
 
   return new Date(value).toLocaleDateString(undefined, {
@@ -314,278 +193,425 @@ function formatRelativeTime(value) {
   });
 }
 
-function formatDashboardDate(date) {
-  return date.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
+function formatActivityTimestamp(value) {
+  if (!value) {
+    return 'Just now';
+  }
+
+  return new Date(value).toLocaleString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
     day: 'numeric',
   });
 }
 
-function formatDashboardTime(date) {
-  return date.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
+function getGreetingForHour(hour, name = '') {
+  const cleanName = trimToNull(String(name ?? ''));
 
-function getGreetingForHour(hour) {
   if (hour < 12) {
-    return 'Good morning';
+    return cleanName ? `Good morning, ${cleanName}.` : 'Good morning.';
   }
 
   if (hour < 18) {
-    return 'Good afternoon';
+    return cleanName ? `Good afternoon, ${cleanName}.` : 'Good afternoon.';
   }
 
-  return 'Good evening';
+  return cleanName ? `Good evening, ${cleanName}.` : 'Good evening.';
 }
 
-function getFirstName(name) {
-  const firstName = trimToNull(String(name ?? ''));
-  return firstName ? firstName.split(/\s+/)[0] : '';
+function normaliseTaskTitle(value) {
+  const trimmed = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!trimmed) {
+    return 'New task';
+  }
+
+  const title = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return title.length > 46 ? `${title.slice(0, 43)}...` : title;
 }
 
-function buildAgentDraftPreview(request) {
-  const lowerRequest = request.toLowerCase();
-
-  if (
-    lowerRequest.includes('invoice') ||
-    lowerRequest.includes('payment') ||
-    lowerRequest.includes('chase')
-  ) {
-    return {
-      label: 'Writing follow-up',
-      text: `Hi [client],
-
-Just following up on the outstanding invoice. If payment is already in motion, feel free to ignore this note. Otherwise, let me know if you need anything reissued from my side.
-
-Best,`,
-    };
+function buildTaskDescription(request, sourceEmail = null) {
+  if (sourceEmail) {
+    return sourceEmail.body || sourceEmail.subject || 'Drafting a response from the inbox.';
   }
 
-  if (lowerRequest.includes('quote') || lowerRequest.includes('pricing')) {
-    return {
-      label: 'Writing quote',
-      text: `Hi [client],
+  return String(request ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
 
-Here is a draft quote based on the scope discussed. I have kept the structure clear so it is easy to review, adjust, and send.
+function normaliseTaskCopy(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/\.\.\./g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
-Best,`,
-    };
+function isDuplicateTaskDescription(description, title) {
+  const normalisedDescription = normaliseTaskCopy(description);
+  const normalisedTitle = normaliseTaskCopy(title);
+
+  if (!normalisedDescription || !normalisedTitle) {
+    return false;
   }
 
-  if (
-    lowerRequest.includes('meeting') ||
-    lowerRequest.includes('calendar') ||
-    lowerRequest.includes('invite') ||
-    lowerRequest.includes('book')
-  ) {
-    return {
-      label: 'Writing invite note',
-      text: `Hi [name],
+  return (
+    normalisedDescription === normalisedTitle ||
+    normalisedDescription.startsWith(normalisedTitle) ||
+    normalisedTitle.startsWith(normalisedDescription)
+  );
+}
 
-Happy to get this booked. I am pulling together a couple of times that should work and will send the invite once the timing is confirmed.
+function isPlaceholderDraftContent(value) {
+  const draftContent = trimToNull(String(value ?? ''));
+  return Boolean(draftContent && draftContent.includes('[') && draftContent.includes(']'));
+}
 
-Best,`,
-    };
+function buildClarifyingQuestion(request) {
+  const lower = request.toLowerCase();
+
+  if (lower.includes('meeting') || lower.includes('book')) {
+    return 'Should I prioritise the earliest available slot if everyone is free?';
   }
 
-  if (
-    lowerRequest.includes('email') ||
-    lowerRequest.includes('reply') ||
-    lowerRequest.includes('follow up') ||
-    lowerRequest.includes('follow-up')
-  ) {
-    return {
-      label: 'Writing email',
-      text: `Hi [recipient],
-
-Thanks for your note. I am drafting a reply that covers the main points clearly and moves the conversation to the next step.
-
-Best,`,
-    };
-  }
-
-  if (
-    lowerRequest.includes('summary') ||
-    lowerRequest.includes('summaris') ||
-    lowerRequest.includes('inbox')
-  ) {
-    return {
-      label: 'Drafting summary',
-      text: `Summary
-
-- Key update
-- Follow-up needed
-- Important deadline`,
-    };
+  if (lower.includes('invoice') || lower.includes('quote')) {
+    return 'Do you want me to keep the wording firm rather than warm?';
   }
 
   return null;
 }
 
-function buildTaskFromPrompt(input) {
-  const request = input.trim().replace(/\s+/g, ' ');
-  const lowerRequest = request.toLowerCase();
-
-  let steps = [
-    createPlanStep(
-      'Confirm the outcome',
-      'Pull the key objective, delivery format, and any dates or names mentioned in the request.',
-      'next',
-    ),
-    createPlanStep(
-      'Gather the needed context',
-      'Collect the information, previous threads, and business rules required to complete the task cleanly.',
-    ),
-    createPlanStep(
-      'Draft the working output',
-      'Prepare the first pass so the task can move forward without losing momentum.',
-    ),
-    createPlanStep(
-      'Check for risk or approval points',
-      'Flag anything sensitive, client-facing, or financial before the final action is taken.',
-      'review',
-    ),
-  ];
-
-  if (
-    lowerRequest.includes('meeting') ||
-    lowerRequest.includes('calendar') ||
-    lowerRequest.includes('invite') ||
-    lowerRequest.includes('book')
-  ) {
-    steps = [
-      createPlanStep(
-        'Identify the participants and timing constraints',
-        'Pull the names, preferred windows, and any time-zone or duration requirements from the request.',
-        'next',
-      ),
-      createPlanStep(
-        'Check calendar availability',
-        'Compare the likely windows and remove anything that would clash with existing commitments.',
-      ),
-      createPlanStep(
-        'Prepare the invite details',
-        'Draft the calendar title, agenda, and location or meeting link so the booking is ready to send.',
-      ),
-      createPlanStep(
-        'Send or queue the confirmation',
-        'Release the invite or hold it for approval if the wording or timing needs a final check.',
-        'review',
-      ),
-    ];
-  } else if (
-    lowerRequest.includes('invoice') ||
-    lowerRequest.includes('payment') ||
-    lowerRequest.includes('quote') ||
-    lowerRequest.includes('pricing')
-  ) {
-    steps = [
-      createPlanStep(
-        'Verify the commercial details',
-        'Check the amount, dates, client context, and any adjustments or fees that could affect the response.',
-        'next',
-      ),
-      createPlanStep(
-        'Pull the supporting record',
-        'Gather the invoice, quote draft, or payment history needed to back up the next action.',
-      ),
-      createPlanStep(
-        'Draft the response or follow-up',
-        'Prepare the message or document with the correct figures, tone, and due-date language.',
-      ),
-      createPlanStep(
-        'Route any sensitive step for review',
-        'Pause for approval before sending if the action changes pricing, charges a fee, or affects a client commitment.',
-        'review',
-      ),
-    ];
-  } else if (
-    lowerRequest.includes('email') ||
-    lowerRequest.includes('reply') ||
-    lowerRequest.includes('follow up') ||
-    lowerRequest.includes('follow-up')
-  ) {
-    steps = [
-      createPlanStep(
-        'Review the thread and objective',
-        'Identify who the reply is for, what needs to be said, and the result the message should drive.',
-        'next',
-      ),
-      createPlanStep(
-        'Draft the message',
-        'Write the email in the business tone with the key dates, asks, and next steps in place.',
-      ),
-      createPlanStep(
-        'Check facts and phrasing',
-        'Make sure names, commitments, and any sensitive wording are correct before the draft is used.',
-      ),
-      createPlanStep(
-        'Queue for send or approval',
-        'Move the draft forward immediately or hold it if the request touches a sensitive scenario.',
-        'review',
-      ),
-    ];
-  } else if (
-    lowerRequest.includes('summary') ||
-    lowerRequest.includes('summaris') ||
-    lowerRequest.includes('inbox')
-  ) {
-    steps = [
-      createPlanStep(
-        'Collect the source material',
-        'Gather the relevant messages, notes, or threads that belong in the summary.',
-        'next',
-      ),
-      createPlanStep(
-        'Group the main themes',
-        'Pull out actions, blockers, deadlines, and notable context so the summary is useful, not just shorter.',
-      ),
-      createPlanStep(
-        'Draft the summary',
-        'Write a concise update with the right tone, priority order, and recommended next actions.',
-      ),
-      createPlanStep(
-        'Flag anything that needs follow-up',
-        'Surface any missing information or approval points before the summary is circulated.',
-        'review',
-      ),
-    ];
-  }
-
+function createPlanStep(title, detail, tone = 'queued') {
   return {
-    id: createId('task'),
-    name: normaliseTaskTitle(request),
-    request,
-    status: 'working',
-    updatedAt: Date.now(),
-    steps,
-    draftPreview: buildAgentDraftPreview(request),
-    reviewFeedback: null,
-    clarifyingQuestion: null,
-    questionAnswer: null,
-    source: 'manual',
-    sourceEmailId: null,
-    sourceEmail: null,
+    title: String(title ?? '').trim(),
+    detail: String(detail ?? '').trim(),
+    tone: ['next', 'queued', 'review'].includes(tone) ? tone : 'queued',
   };
 }
 
-function normaliseAgentPlanSteps(steps, fallbackSteps = []) {
-  if (!Array.isArray(steps)) {
-    return fallbackSteps;
+function tierToTone(tier) {
+  if (tier === 1) {
+    return 'next';
   }
 
-  const normalisedSteps = steps
+  if (tier === 3) {
+    return 'review';
+  }
+
+  return 'queued';
+}
+
+function toneToTier(tone) {
+  if (tone === 'next') {
+    return 1;
+  }
+
+  if (tone === 'review') {
+    return 3;
+  }
+
+  return 2;
+}
+
+function createMockDraftPreview(request, sourceEmail = null) {
+  const fallbackText =
+    'Hi [name], thanks for reaching out. Happy to help with that — I will get back to you shortly with more detail.\n\nBest,\nOlivander Test Account';
+  const draftPreview = buildTaskDraftPreview(request, sourceEmail);
+
+  if (!draftPreview) {
+    return {
+      label: 'Draft',
+      text: fallbackText,
+    };
+  }
+
+  return {
+    label: draftPreview.label,
+    text: trimToNull(draftPreview.text) ?? fallbackText,
+  };
+}
+
+function createMockAgentPlan(request, sourceEmail = null) {
+  return {
+    steps: MOCK_PLAN,
+    draftPreview: requestNeedsDraftPreview(request, sourceEmail)
+      ? createMockDraftPreview(request, sourceEmail)
+      : null,
+    clarifyingQuestion: buildClarifyingQuestion(request),
+  };
+}
+
+function getDisplayPlanSteps(steps) {
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+
+  return steps
     .map((step) => {
       if (!step || typeof step !== 'object') {
         return null;
       }
 
-      const title = trimToNull(String(step.title ?? ''));
-      const detail = trimToNull(String(step.detail ?? ''));
-      const tone = ['next', 'queued', 'review'].includes(step.tone) ? step.tone : 'queued';
+      const description =
+        trimToNull(String(step.description ?? step.detail ?? step.title ?? '')) ?? null;
+
+      if (!description) {
+        return null;
+      }
+
+      const tierValue = Number(step.tier);
+      const tier = Number.isFinite(tierValue) ? tierValue : toneToTier(step.tone);
+
+      return {
+        description,
+        tier: tier === 1 || tier === 2 || tier === 3 ? tier : 2,
+      };
+    })
+    .filter(Boolean);
+}
+
+function requestNeedsDraftPreview(request, sourceEmail = null) {
+  const lower = String(request ?? '').toLowerCase();
+
+  return Boolean(sourceEmail) || [
+    'email',
+    'reply',
+    'follow up',
+    'follow-up',
+    'summary',
+    'summaris',
+    'quote',
+    'proposal',
+    'invoice',
+    'meeting note',
+  ].some((keyword) => lower.includes(keyword));
+}
+
+function buildTaskPlanSteps(request, sourceEmail = null) {
+  const lower = String(request ?? '').toLowerCase();
+
+  if (
+    lower.includes('meeting') ||
+    lower.includes('calendar') ||
+    lower.includes('book')
+  ) {
+    return [
+      createPlanStep(
+        'Confirm the brief',
+        'Pull the people, timing, and constraints from the request.',
+        'next',
+      ),
+      createPlanStep(
+        'Check availability',
+        'Review the likely windows and remove obvious conflicts.',
+      ),
+      createPlanStep(
+        'Prepare the details',
+        'Draft the invite, agenda, and any note that needs to go with it.',
+      ),
+      createPlanStep(
+        'Queue the release',
+        'Send it forward or pause if the wording needs a final check.',
+        'review',
+      ),
+    ];
+  }
+
+  if (
+    lower.includes('invoice') ||
+    lower.includes('payment') ||
+    lower.includes('quote') ||
+    lower.includes('pricing')
+  ) {
+    return [
+      createPlanStep(
+        'Verify the numbers',
+        'Check the figures, dates, and any commercial context.',
+        'next',
+      ),
+      createPlanStep(
+        'Pull the record',
+        'Gather the invoice, quote, or payment history behind the request.',
+      ),
+      createPlanStep(
+        'Draft the response',
+        'Write the follow-up with the right tone and specifics.',
+      ),
+      createPlanStep(
+        'Hold for release',
+        'Pause if it changes pricing, payment timing, or a client commitment.',
+        'review',
+      ),
+    ];
+  }
+
+  if (
+    sourceEmail ||
+    lower.includes('email') ||
+    lower.includes('reply') ||
+    lower.includes('follow up') ||
+    lower.includes('follow-up')
+  ) {
+    return [
+      createPlanStep(
+        'Review the context',
+        'Work out what needs to be said and the outcome the message should drive.',
+        'next',
+      ),
+      createPlanStep(
+        'Shape the response',
+        'Write the reply with the key details in the right tone.',
+      ),
+      createPlanStep(
+        'Check the details',
+        'Confirm names, commitments, and phrasing before it goes out.',
+      ),
+      createPlanStep(
+        'Queue the next action',
+        'Send it on or hold it if it needs approval first.',
+        'review',
+      ),
+    ];
+  }
+
+  if (lower.includes('summary') || lower.includes('summaris') || lower.includes('inbox')) {
+    return [
+      createPlanStep(
+        'Collect the source material',
+        'Gather the threads, notes, and context that belong in the summary.',
+        'next',
+      ),
+      createPlanStep(
+        'Group the key points',
+        'Pull out actions, blockers, deadlines, and anything important.',
+      ),
+      createPlanStep(
+        'Draft the summary',
+        'Write the update in a clear order with the next actions visible.',
+      ),
+      createPlanStep(
+        'Flag follow-up',
+        'Surface anything that still needs input or approval.',
+        'review',
+      ),
+    ];
+  }
+
+  return [
+    createPlanStep(
+      'Confirm the outcome',
+      'Pull the objective, format, and any dates or names from the request.',
+      'next',
+    ),
+    createPlanStep(
+      'Gather the context',
+      'Collect the information and business details needed to complete it.',
+    ),
+    createPlanStep(
+      'Prepare the work',
+      'Draft the next output so the task can move forward cleanly.',
+    ),
+    createPlanStep(
+      'Check for release points',
+      'Flag anything sensitive, financial, or client-facing before it goes out.',
+      'review',
+    ),
+  ];
+}
+
+function buildTaskDraftPreview(request, sourceEmail = null) {
+  const lower = String(request ?? '').toLowerCase();
+  const recipient =
+    trimToNull(sourceEmail?.senderName) ??
+    (sourceEmail ? 'there' : lower.includes('meeting') ? 'everyone' : '[recipient]');
+
+  if (
+    sourceEmail ||
+    lower.includes('email') ||
+    lower.includes('reply') ||
+    lower.includes('follow up') ||
+    lower.includes('follow-up')
+  ) {
+    return {
+      label: 'Draft reply',
+      text:
+        `Hi ${recipient},\n\n` +
+        'Thanks for your message. I am pulling the details together now and will make sure the next step is clear and easy to action.\n\n' +
+        'Best,\nOlivander Technologies',
+    };
+  }
+
+  if (lower.includes('summary') || lower.includes('summaris') || lower.includes('inbox')) {
+    return {
+      label: 'Draft summary',
+      text:
+        'Summary\n\n' +
+        '- Priority update\n' +
+        '- Follow-up needed\n' +
+        '- Important deadline',
+    };
+  }
+
+  if (lower.includes('quote') || lower.includes('proposal')) {
+    return {
+      label: 'Draft quote',
+      text:
+        'Hi [Client name],\n\n' +
+        "Thanks for reaching out. Here's a quick outline based on what you've described:\n\n" +
+        "Scope: [I'll fill this in once I know more about the project]\n" +
+        'Estimate: [To be confirmed — happy to discuss]\n' +
+        'Timing: [We can discuss a start date that works for you]\n\n' +
+        "Let me know if you'd like to jump on a call to go through the details.",
+    };
+  }
+
+  if (
+    lower.includes('meeting') ||
+    lower.includes('calendar') ||
+    lower.includes('book')
+  ) {
+    return {
+      label: 'Draft note',
+      text:
+        `Hi ${recipient},\n\n` +
+        'I have pulled together a couple of options for the meeting and will confirm the best slot next.\n\n' +
+        'Best,\nOlivander Technologies',
+    };
+  }
+
+  return requestNeedsDraftPreview(request, sourceEmail)
+    ? {
+        label: 'Draft',
+        text: 'Working draft\n\nThis is being prepared now.',
+      }
+    : null;
+}
+
+function normalisePlanSteps(steps, fallbackSteps = []) {
+  if (!Array.isArray(steps)) {
+    return fallbackSteps;
+  }
+
+  const safeSteps = steps
+    .map((step, index) => {
+      if (!step || typeof step !== 'object') {
+        return null;
+      }
+
+      const detail =
+        trimToNull(String(step.detail ?? step.description ?? '')) ??
+        trimToNull(String(step.title ?? ''));
+      const title =
+        trimToNull(String(step.title ?? '')) ??
+        trimToNull(String(step.description ?? '')) ??
+        `Step ${index + 1}`;
+      const tone =
+        trimToNull(String(step.tone ?? '')) ??
+        tierToTone(Number.isFinite(Number(step.tier)) ? Number(step.tier) : 2);
 
       if (!title || !detail) {
         return null;
@@ -595,68 +621,76 @@ function normaliseAgentPlanSteps(steps, fallbackSteps = []) {
     })
     .filter(Boolean);
 
-  return normalisedSteps.length ? normalisedSteps.slice(0, 5) : fallbackSteps;
+  return safeSteps.length ? safeSteps.slice(0, 5) : fallbackSteps;
 }
 
-function normaliseAgentDraftPreview(draftPreview, fallbackDraftPreview = null) {
+function normaliseDraftPreview(draftPreview, fallbackPreview = null) {
   if (!draftPreview || typeof draftPreview !== 'object') {
-    return fallbackDraftPreview;
+    return fallbackPreview;
   }
 
   const label = trimToNull(String(draftPreview.label ?? ''));
   const text = trimToNull(String(draftPreview.text ?? ''));
 
   if (!label || !text) {
-    return fallbackDraftPreview;
+    return fallbackPreview;
   }
 
+  return { label, text };
+}
+
+function buildTaskFromRequest(request, overrides = {}) {
+  const sourceEmail = overrides.sourceEmail ?? null;
+  const planSteps =
+    overrides.planSteps ?? buildTaskPlanSteps(request, sourceEmail);
+  const draftPreview =
+    overrides.draftPreview === undefined
+      ? buildTaskDraftPreview(request, sourceEmail)
+      : overrides.draftPreview;
+  const draftContent =
+    overrides.draftContent === undefined ? draftPreview?.text ?? null : overrides.draftContent;
+
   return {
-    label,
-    text,
+    id: overrides.id ?? createId('task'),
+    name: overrides.name ?? normaliseTaskTitle(request),
+    request,
+    description: overrides.description ?? buildTaskDescription(request, sourceEmail),
+    status: overrides.status ?? 'working',
+    updatedAt: overrides.updatedAt ?? Date.now(),
+    createdAt: overrides.createdAt ?? Date.now(),
+    source: overrides.source ?? (sourceEmail ? 'email' : 'manual'),
+    sourceEmailId: overrides.sourceEmailId ?? sourceEmail?.id ?? null,
+    sourceEmail,
+    clarifyingQuestion:
+      overrides.clarifyingQuestion ?? buildClarifyingQuestion(request),
+    questionAnswer: overrides.questionAnswer ?? null,
+    notes: overrides.notes ?? [],
+    planSteps,
+    draftPreview,
+    draftContent,
+    planSummary: overrides.planSummary ?? null,
+    planRequestState:
+      overrides.planRequestState ?? (planSteps.length || draftContent ? 'ready' : 'loading'),
   };
 }
 
-function buildTaskFromAgentPlan(input, agentPlan, options = {}) {
-  const baseTask = options.baseTask ?? buildTaskFromPrompt(input);
-  const hasDraftPreviewOverride = Object.prototype.hasOwnProperty.call(
-    options,
-    'draftPreview',
-  );
-  const normalisedDraftPreview = normaliseAgentDraftPreview(agentPlan?.draftPreview, null);
+function normaliseAgentPlan(task, agentPlan) {
+  if (!agentPlan || typeof agentPlan !== 'object') {
+    return task;
+  }
+
+  const draftPreview = normaliseDraftPreview(agentPlan.draftPreview, task.draftPreview ?? null);
 
   return {
-    ...baseTask,
-    name: normaliseTaskTitle(
-      trimToNull(agentPlan?.name) ?? trimToNull(options.name) ?? baseTask.name,
-    ),
-    request: options.request ?? baseTask.request,
-    updatedAt: Date.now(),
-    steps: normaliseAgentPlanSteps(agentPlan?.steps, baseTask.steps),
-    draftPreview: hasDraftPreviewOverride
-      ? options.draftPreview
-      : agentPlan
-        ? normalisedDraftPreview
-        : normalisedDraftPreview ?? baseTask.draftPreview,
-    clarifyingQuestion: trimToNull(agentPlan?.clarifyingQuestion),
-    reviewFeedback: options.reviewFeedback ?? baseTask.reviewFeedback ?? null,
-  };
-}
-
-function createAgentRun(task) {
-  const draftPreview = task.draftPreview ?? null;
-
-  return {
-    id: createId('run'),
-    taskId: task.id,
-    taskName: task.name,
-    status: 'Thinking',
-    steps: task.steps,
-    activeStepIndex: 0,
-    completedStepCount: 0,
-    draftLabel: draftPreview?.label ?? null,
-    draftTarget: draftPreview?.text ?? '',
-    draftText: '',
-    isComplete: false,
+    ...task,
+    name: normaliseTaskTitle(trimToNull(agentPlan.name) ?? task.name),
+    planSteps: normalisePlanSteps(agentPlan.steps, task.planSteps ?? []),
+    draftPreview,
+    draftContent: draftPreview?.text ?? task.draftContent ?? null,
+    planSummary: trimToNull(String(agentPlan.planSummary ?? '')) ?? task.planSummary,
+    clarifyingQuestion:
+      trimToNull(agentPlan.clarifyingQuestion) ?? task.clarifyingQuestion,
+    planRequestState: 'ready',
   };
 }
 
@@ -665,50 +699,47 @@ function normaliseIncomingEmail(email) {
     return null;
   }
 
-  const reply = email.agentResponse ?? email.suggestedReply ?? '';
+  const agentResponse =
+    trimToNull(String(email.agentResponse ?? email.suggestedReply ?? '')) ?? '';
 
   return {
-    ...email,
     id: String(email.id ?? createId('email')),
-    senderName: email.senderName ?? 'Unknown Sender',
-    senderEmail: email.senderEmail ?? 'unknown@example.com',
-    subject: email.subject ?? 'Untitled Email',
-    body: email.body ?? '',
-    agentResponse: reply,
-    requiresApproval: email.requiresApproval ?? Boolean(reply),
-    approvalDelayMs: email.approvalDelayMs ?? 1600,
-    approvalTier: email.approvalTier ?? 'Reply review',
+    senderName:
+      trimToNull(String(email.senderName ?? email.from_name ?? '')) ?? 'Unknown sender',
+    senderEmail:
+      trimToNull(String(email.senderEmail ?? email.from ?? '')) ?? 'unknown@example.com',
+    subject: trimToNull(String(email.subject ?? '')) ?? 'Untitled message',
+    body: trimToNull(String(email.body ?? email.snippet ?? '')) ?? '',
+    date: email.date ?? null,
+    agentResponse,
+    requiresApproval: email.requiresApproval ?? Boolean(agentResponse),
+    approvalTier: trimToNull(String(email.approvalTier ?? '')) ?? 'Tier 3',
     approvalWhy:
-      email.approvalWhy ??
-      'A draft reply is ready and should be reviewed before it is sent.',
-    status: email.status ?? 'new',
+      trimToNull(String(email.approvalWhy ?? '')) ??
+      'This message changes a customer-facing action and should be reviewed before it goes out.',
+    approvalDelayMs:
+      typeof email.approvalDelayMs === 'number' ? email.approvalDelayMs : 1500,
+    status: trimToNull(String(email.status ?? '')) ?? 'new',
   };
 }
 
 function buildTaskFromEmail(email) {
-  const task = buildTaskFromPrompt(`Reply to ${email.senderName} about ${email.subject}`);
-  const replyPreview = email.agentResponse ?? email.suggestedReply ?? '';
-
-  return {
-    ...task,
+  return buildTaskFromRequest(`Reply to ${email.senderName} about ${email.subject}`, {
     name: normaliseTaskTitle(`Reply to ${email.senderName}: ${email.subject}`),
-    request: `From: ${email.senderName} <${email.senderEmail}>\nSubject: ${email.subject}\n\n${email.body}`,
-    updatedAt: Date.now(),
+    description: buildTaskDescription('', {
+      subject: email.subject,
+      body: email.body,
+    }),
     source: 'email',
     sourceEmailId: email.id,
     sourceEmail: {
+      id: email.id,
       senderName: email.senderName,
       senderEmail: email.senderEmail,
       subject: email.subject,
       body: email.body,
     },
-    draftPreview: replyPreview
-      ? {
-          label: 'Writing email',
-          text: replyPreview,
-        }
-      : null,
-  };
+  });
 }
 
 function buildApprovalFromEmail(email, taskId) {
@@ -720,515 +751,1447 @@ function buildApprovalFromEmail(email, taskId) {
     senderEmail: email.senderEmail,
     subject: email.subject,
     createdAt: Date.now(),
-    tier: email.approvalTier ?? 'Reply review',
-    why:
-      email.approvalWhy ??
-      'This reply changes a customer-facing commitment and should be reviewed before sending.',
+    tier: email.approvalTier,
+    why: email.approvalWhy,
+    agentResponse: email.agentResponse,
+    status: 'review',
     sourceEmail: {
       senderName: email.senderName,
       senderEmail: email.senderEmail,
       subject: email.subject,
       body: email.body,
     },
-    agentResponse: email.agentResponse ?? email.suggestedReply ?? '',
   };
 }
 
-function getPlanStepState(task, activeRun, index) {
-  if (activeRun?.taskId === task.id) {
-    if (activeRun.isComplete || index < activeRun.completedStepCount) {
-      return 'done';
-    }
-
-    if (index === activeRun.activeStepIndex) {
-      return 'active';
-    }
-
-    return 'pending';
-  }
-
-  if (task.status === 'done') {
-    return 'done';
-  }
-
-  return 'pending';
+function createEmptyMemoryProfile() {
+  return {
+    [MEMORY_KEYS.businessName]: 'Olivander Technologies',
+    [MEMORY_KEYS.ownerEmail]: '',
+    [MEMORY_KEYS.businessType]: '',
+    [MEMORY_KEYS.pricingRange]: '',
+    [MEMORY_KEYS.paymentTerms]: '',
+    [MEMORY_KEYS.gstRegistered]: '',
+    [MEMORY_KEYS.replyTone]: '',
+    [MEMORY_KEYS.replyToneEdits]: '0',
+    [MEMORY_KEYS.reschedulePolicy]: '',
+    [MEMORY_KEYS.noShowHandling]: '',
+  };
 }
 
-function getTaskStatusMeta(status) {
-  if (status === 'done') {
-    return { label: 'Done', tone: 'success' };
+function normaliseMemoryProfile(payload) {
+  const base = createEmptyMemoryProfile();
+
+  if (!payload || typeof payload !== 'object') {
+    return base;
   }
 
-  if (status === 'waiting') {
-    return { label: 'Waiting', tone: 'warning' };
+  Object.keys(base).forEach((key) => {
+    if (trimToNull(String(payload[key] ?? '')) !== null) {
+      base[key] = String(payload[key]).trim();
+    }
+  });
+
+  if (!trimToNull(base[MEMORY_KEYS.replyTone]) && trimToNull(String(payload.tone ?? ''))) {
+    base[MEMORY_KEYS.replyTone] = String(payload.tone).trim();
   }
 
-  return { label: 'Working', tone: 'accent' };
+  return base;
 }
 
-function getActivityTone(type) {
-  if (type === 'resolved') {
-    return 'success';
+function hasMemoryData(profile) {
+  if (!profile || typeof profile !== 'object') {
+    return false;
+  }
+
+  return [
+    MEMORY_KEYS.businessType,
+    MEMORY_KEYS.pricingRange,
+    MEMORY_KEYS.paymentTerms,
+    MEMORY_KEYS.gstRegistered,
+    MEMORY_KEYS.replyTone,
+    MEMORY_KEYS.reschedulePolicy,
+    MEMORY_KEYS.noShowHandling,
+  ].some((key) => trimToNull(profile[key]) !== null);
+}
+
+function toTimestamp(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  return 0;
+}
+
+function getActivityAppearance(type) {
+  if (type === 'approved' || type === 'auto' || type === 'resolved') {
+    return { tone: 'success', icon: 'check' };
+  }
+
+  if (type === 'rejected') {
+    return { tone: 'danger', icon: 'reject' };
   }
 
   if (type === 'draft') {
-    return 'accent';
+    return { tone: 'accent', icon: 'mail' };
   }
 
-  return 'warning';
+  return { tone: 'accent', icon: 'clock' };
 }
 
-function createEmptyMemoryDraft() {
-  return MEMORY_FIELDS.reduce((draft, field) => {
-    draft[field.key] = '';
-    return draft;
-  }, {});
+function filterActivityItems(items, filter) {
+  if (filter === 'all') {
+    return items;
+  }
+
+  return items.filter((item) => item.type === filter);
 }
 
-function mapProfileToDraft(profile) {
-  return MEMORY_FIELDS.reduce((draft, field) => {
-    draft[field.key] = profile?.[field.key] ?? '';
-    return draft;
-  }, {});
+async function readResponseDetail(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+
+    if (payload?.detail) {
+      return String(payload.detail);
+    }
+  } catch {
+  }
+
+  return fallbackMessage;
 }
 
-function hasMemoryContent(profile) {
-  return MEMORY_FIELDS.some((field) => String(profile?.[field.key] ?? '').trim());
+function IconBase({ children, className = '' }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`ui-icon ${className}`.trim()}
+    >
+      {children}
+    </svg>
+  );
 }
 
-function ToastStack({ notifications, onDismiss }) {
-  if (!notifications.length) {
-    return null;
+function HouseIcon() {
+  return (
+    <IconBase>
+      <path d="M2.4 7.1 8 2.8l5.6 4.3" />
+      <path d="M3.8 6.2v7h8.4v-7" />
+    </IconBase>
+  );
+}
+
+function TaskListIcon() {
+  return (
+    <IconBase>
+      <path d="M4.9 4.4h8" />
+      <path d="M4.9 8h8" />
+      <path d="M4.9 11.6h8" />
+      <path d="M2.8 4.4h.1" />
+      <path d="M2.8 8h.1" />
+      <path d="M2.8 11.6h.1" />
+    </IconBase>
+  );
+}
+
+function CheckCircleIcon() {
+  return (
+    <IconBase>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="m5.7 8.1 1.5 1.5 3.2-3.3" />
+    </IconBase>
+  );
+}
+
+function LinesIcon() {
+  return (
+    <IconBase>
+      <path d="M2.5 4.5h11" />
+      <path d="M2.5 8h9" />
+      <path d="M2.5 11.5h7" />
+    </IconBase>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <IconBase>
+      <path d="M3 8h9.2" />
+      <path d="m9 4.9 3.2 3.1L9 11.1" />
+    </IconBase>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <IconBase>
+      <path d="M13 8H3.8" />
+      <path d="M7 4.9 3.8 8 7 11.1" />
+    </IconBase>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <IconBase>
+      <path d="M6.1 10 4.7 11.4a2.6 2.6 0 0 1-3.7-3.7L3 5.7" />
+      <path d="m9.9 6 1.4-1.4A2.6 2.6 0 1 1 15 8.3l-2 2" />
+      <path d="m5.5 10.5 5-5" />
+    </IconBase>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <IconBase>
+      <path d="M8 3v10" />
+      <path d="M3 8h10" />
+    </IconBase>
+  );
+}
+
+function ChevronIcon({ className = '' }) {
+  return (
+    <IconBase className={className}>
+      <path d="m6 4.6 3.8 3.4L6 11.4" />
+    </IconBase>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0, display: 'block' }}
+      className="ui-icon"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DatabaseIcon() {
+  return (
+    <IconBase>
+      <ellipse cx="8" cy="4.2" rx="4.6" ry="1.8" />
+      <path d="M3.4 4.2v4.1c0 1 2 1.8 4.6 1.8s4.6-.8 4.6-1.8V4.2" />
+      <path d="M3.4 8.3v3.5c0 1 2 1.8 4.6 1.8s4.6-.8 4.6-1.8V8.3" />
+    </IconBase>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="ui-icon"
+      aria-hidden="true"
+      style={{ flexShrink: 0, display: 'block' }}
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="3.2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M12 3V5.25M12 18.75V21M21 12H18.75M5.25 12H3M18.36 5.64l-1.59 1.59M7.23 16.77l-1.59 1.59M18.36 18.36l-1.59-1.59M7.23 7.23 5.64 5.64"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="ui-icon"
+      aria-hidden="true"
+      style={{ flexShrink: 0, display: 'block' }}
+    >
+      <path
+        d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <IconBase>
+      <path d="M6.1 3.2H3.7a1.2 1.2 0 0 0-1.2 1.2v7.2a1.2 1.2 0 0 0 1.2 1.2h2.4" />
+      <path d="M9.1 5.2 12 8l-2.9 2.8" />
+      <path d="M5 8h7" />
+    </IconBase>
+  );
+}
+
+function MailIcon() {
+  return (
+    <IconBase>
+      <rect x="2.2" y="3.3" width="11.6" height="9.4" rx="1.6" />
+      <path d="m2.9 4.4 5.1 4 5.1-4" />
+    </IconBase>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <IconBase>
+      <circle cx="8" cy="8" r="5.7" />
+      <path d="M8 5.2v3.1l2 1.4" />
+    </IconBase>
+  );
+}
+
+function RejectIcon() {
+  return (
+    <IconBase>
+      <circle cx="8" cy="8" r="5.7" />
+      <path d="m6.1 6.1 3.8 3.8" />
+      <path d="m9.9 6.1-3.8 3.8" />
+    </IconBase>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
+      <path
+        fill="#4285f4"
+        d="M24 14.3c0-.78-.07-1.52-.2-2.24H14v4.24h5.6a4.78 4.78 0 0 1-2.08 3.14v2.6h3.36c1.96-1.8 3.12-4.47 3.12-7.77Z"
+      />
+      <path
+        fill="#34a853"
+        d="M14 24.5c2.8 0 5.15-.93 6.87-2.53l-3.36-2.6c-.93.63-2.12 1-3.5 1-2.7 0-4.98-1.82-5.8-4.27H4.74v2.69A10.38 10.38 0 0 0 14 24.5Z"
+      />
+      <path
+        fill="#fbbc04"
+        d="M8.2 16.15A6.22 6.22 0 0 1 7.88 14c0-.75.12-1.48.33-2.15V9.16H4.74A10.42 10.42 0 0 0 3.5 14c0 1.67.4 3.24 1.24 4.84l3.46-2.69Z"
+      />
+      <path
+        fill="#ea4335"
+        d="M14 7.58c1.52 0 2.89.52 3.96 1.54l2.97-2.97C19.15 4.49 16.8 3.5 14 3.5a10.38 10.38 0 0 0-9.26 5.66l3.47 2.69c.8-2.45 3.08-4.27 5.79-4.27Z"
+      />
+    </svg>
+  );
+}
+
+function XeroIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
+      <circle cx="14" cy="14" r="13" fill="#13b5ea" />
+      <path
+        d="m10.3 10.1 3.55 3.57 3.6-3.57h1.7l-4.45 4.45 4.45 4.45h-1.7l-3.6-3.57-3.55 3.57H8.6l4.43-4.45-4.43-4.45h1.7Z"
+        fill="#fff"
+      />
+    </svg>
+  );
+}
+
+function ActivityGlyph({ icon }) {
+  if (icon === 'check') {
+    return <CheckCircleIcon />;
+  }
+
+  if (icon === 'mail') {
+    return <MailIcon />;
+  }
+
+  if (icon === 'reject') {
+    return <RejectIcon />;
+  }
+
+  return <ClockIcon />;
+}
+
+function ActivityList({ items, emptyText, showTimestamp = false }) {
+  if (!items.length) {
+    return <div className="empty-card">{emptyText}</div>;
   }
 
   return (
-    <div className="toast-stack" aria-live="polite">
-      {notifications.map((notification) => (
-        <article
-          key={notification.id}
-          className={`toast toast--${notification.tone}`}
-        >
-          <div className="toast__copy">
-            <div className="toast__title">{notification.title}</div>
-            <div className="toast__description">{notification.description}</div>
-          </div>
-          <button
-            type="button"
-            className="toast__dismiss"
-            aria-label="Dismiss notification"
-            onClick={() => onDismiss(notification.id)}
+    <div className="activity-list">
+      {items.map((item, index) => {
+        const appearance = getActivityAppearance(item.type);
+
+        return (
+          <article
+            key={item.id}
+            className={`activity-item ${index === items.length - 1 ? 'is-last' : ''}`}
           >
-            ×
-          </button>
-        </article>
-      ))}
+            <div className={`activity-item__icon tone-${appearance.tone}`}>
+              <ActivityGlyph icon={appearance.icon} />
+            </div>
+            <div className="activity-item__content">
+              <div className="activity-item__row">
+                <div className="activity-item__name">{item.title}</div>
+                {showTimestamp ? (
+                  <div className="activity-item__time">
+                    {formatActivityTimestamp(item.createdAt ?? item.timestamp)}
+                  </div>
+                ) : null}
+              </div>
+              <div className="activity-item__description">{item.description}</div>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
-function MetricCard({ label, value, detail, tone, delay }) {
-  return (
-    <article className="dashboard-card metric-card" style={{ '--delay': delay }}>
-      <div className="section-eyebrow">{label}</div>
-      <div className={`metric-card__value is-${tone}`}>{value}</div>
-      <div className="metric-card__detail">{detail}</div>
-    </article>
-  );
+function formatTaskAnswer(answer) {
+  if (!answer) {
+    return '';
+  }
+
+  if (answer === 'yes' || answer === 'no') {
+    return answer.charAt(0).toUpperCase() + answer.slice(1);
+  }
+
+  return answer;
+}
+
+function isBinaryTaskAnswer(answer) {
+  const normalised = trimToNull(String(answer ?? ''))?.toLowerCase();
+  return normalised === 'yes' || normalised === 'no';
 }
 
 function TaskCard({
   task,
-  activeRun,
-  linkedApproval,
   isExpanded,
+  isCancelling,
   onToggle,
-  onTaskQuestion,
-  onCancel,
+  onAnswerQuestion,
+  onNoteSubmit,
+  onApproveDraft,
+  onCancelTask,
+  onSaveDraft,
 }) {
-  const status = getTaskStatusMeta(task.status);
-  const steps = task.steps ?? [];
-  const runForTask = activeRun?.taskId === task.id ? activeRun : null;
-  const draftPreview = linkedApproval ? null : task.draftPreview;
-  const previewText = runForTask
-    ? runForTask.draftText || runForTask.draftTarget || draftPreview?.text || ''
-    : draftPreview?.text || '';
-  const previewLabel = runForTask?.draftLabel || draftPreview?.label || null;
-  const isPreviewLive = Boolean(runForTask?.draftTarget && !runForTask.isComplete);
-  const canCancel = task.status === 'working' || task.status === 'waiting';
+  const [note, setNote] = useState('');
+  const [customAnswer, setCustomAnswer] = useState('');
+  const [draftText, setDraftText] = useState(task.draftContent ?? task.draftPreview?.text ?? '');
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [isResolvingQuestion, setIsResolvingQuestion] = useState(false);
+  const resolveTimerRef = useRef(null);
+  const statusMeta =
+    task.status === 'done'
+      ? { label: 'Done', tone: 'success' }
+      : task.status === 'waiting'
+        ? { label: 'Waiting', tone: 'warning' }
+        : { label: 'Working', tone: 'accent' };
+
+  useEffect(
+    () => () => {
+      if (resolveTimerRef.current) {
+        window.clearTimeout(resolveTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (resolveTimerRef.current) {
+      window.clearTimeout(resolveTimerRef.current);
+      resolveTimerRef.current = null;
+    }
+
+    setIsResolvingQuestion(false);
+
+    if (task.questionAnswer) {
+      setCustomAnswer('');
+    }
+  }, [task.id, task.questionAnswer]);
+
+  useEffect(() => {
+    setDraftText(task.draftContent ?? task.draftPreview?.text ?? '');
+    setIsEditingDraft(false);
+  }, [task.draftContent, task.draftPreview?.text, task.id]);
+
+  function submitNote(event) {
+    event.preventDefault();
+
+    if (!note.trim()) {
+      return;
+    }
+
+    onNoteSubmit(task.id, note.trim());
+    setNote('');
+  }
+
+  function resolveQuestion(answer) {
+    if (isResolvingQuestion || task.questionAnswer) {
+      return;
+    }
+
+    setIsResolvingQuestion(true);
+    resolveTimerRef.current = window.setTimeout(() => {
+      onAnswerQuestion(task.id, answer);
+      resolveTimerRef.current = null;
+    }, 220);
+  }
+
+  function submitCustomAnswer(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const answer = customAnswer.trim();
+
+    if (!answer) {
+      return;
+    }
+
+    resolveQuestion(answer);
+  }
+
+  const showClarifyingQuestion =
+    Boolean(task.clarifyingQuestion) && (!task.questionAnswer || isResolvingQuestion);
+  const showAnsweredState =
+    Boolean(task.questionAnswer) && !isBinaryTaskAnswer(task.questionAnswer);
+  const taskPlanSteps = getDisplayPlanSteps(task.planSteps);
+  const draftContent = trimToNull(task.draftContent ?? task.draftPreview?.text ?? '');
+  const showDraft = Boolean(draftContent) && !isPlaceholderDraftContent(draftContent);
+  const isPlanLoading = task.planRequestState === 'loading' || !taskPlanSteps.length;
+  const showDescription =
+    Boolean(trimToNull(task.description)) &&
+    !isDuplicateTaskDescription(task.description, task.name);
+  const canCancelTask = task.status !== 'done' && !isCancelling;
+  const firstVisibleSection =
+    isPlanLoading || taskPlanSteps.length
+      ? 'plan'
+      : showDraft
+        ? 'draft'
+        : showClarifyingQuestion
+          ? 'question'
+          : null;
 
   return (
-    <article className={`task-card ${isExpanded ? 'is-expanded' : ''}`}>
+    <article
+      className={`task-card ${isExpanded ? 'is-expanded' : ''} ${isCancelling ? 'is-removing' : ''}`}
+    >
       <button
         type="button"
-        className="task-card__toggle"
+        className="task-card__summary"
         aria-expanded={isExpanded}
         onClick={onToggle}
       >
-        <div className="task-card__main">
-          <span className={`status-dot is-${status.tone}`} aria-hidden="true" />
-          <div>
-            <div className="task-card__name">{task.name}</div>
-            <div className="task-card__meta-line">
-              <span>{formatRelativeTime(task.updatedAt)}</span>
-              {task.source === 'email' ? <span>From inbox</span> : <span>Manual request</span>}
-            </div>
-          </div>
+        <span className={`task-card__dot tone-${statusMeta.tone}`} />
+        <div className="task-card__heading">
+          <div className="task-card__name">{task.name}</div>
+          <div className="task-card__timestamp">{formatRelativeTime(task.updatedAt)}</div>
         </div>
-        <div className="task-card__top-actions">
-          {linkedApproval ? <span className="mini-pill">Needs review</span> : null}
-          <span className={`status-pill is-${status.tone}`}>{status.label}</span>
-        </div>
+        <span className={`task-card__pill tone-${statusMeta.tone}`}>{statusMeta.label}</span>
+        <ChevronIcon className={`task-card__chevron ${isExpanded ? 'is-open' : ''}`} />
       </button>
 
-      {isExpanded ? (
-        <div className="task-card__body">
-          {steps.length ? (
-            <div className="task-card__section">
-              <div className="section-eyebrow">Plan</div>
-              <div className="step-list">
-                {steps.map((step, index) => {
-                  const stepState = getPlanStepState(task, runForTask, index);
+      <div className={`task-card__body-shell ${isExpanded ? 'is-open' : ''}`}>
+        <div className="task-card__body" onClick={(event) => event.stopPropagation()}>
+          {showDescription ? <div className="task-description">{task.description}</div> : null}
 
-                  return (
-                    <div key={step.id} className={`step-list__item is-${stepState}`}>
-                      <span className={`step-list__marker is-${stepState}`} aria-hidden="true" />
-                      <div>
-                        <div className="step-list__title">{step.title}</div>
-                        <div className="step-list__detail">{step.detail}</div>
-                      </div>
-                    </div>
-                  );
-                })}
+          {isPlanLoading ? (
+            <div className="task-plan task-plan--loading">
+              <div
+                className={`task-section-label ${firstVisibleSection === 'plan' ? 'is-first' : ''}`}
+              >
+                Plan
+              </div>
+              <div className="task-loading">
+                <div className="plan-spinner" />
+                <span>Building the plan…</span>
               </div>
             </div>
           ) : null}
 
-          {previewLabel ? (
-            <div className="task-card__section">
-              <div className="section-eyebrow">{previewLabel}</div>
-              <pre className="code-panel">
-                {previewText}
-                {isPreviewLive ? <span className="typing-cursor" aria-hidden="true" /> : null}
-              </pre>
+          {taskPlanSteps.length ? (
+            <div className="task-plan">
+              <div
+                className={`task-section-label ${firstVisibleSection === 'plan' ? 'is-first' : ''}`}
+              >
+                Plan
+              </div>
+              {taskPlanSteps.map((step, index) => (
+                <div key={`${task.id}-step-${index}`} className="task-step-row">
+                  <span className="step-num">{index + 1}</span>
+                  <span className="step-desc">{step.description}</span>
+                  <span className={`tier-pill tier-${step.tier}`}>
+                    {step.tier === 1 ? 'Auto' : step.tier === 2 ? 'Queued' : 'Review'}
+                  </span>
+                </div>
+              ))}
             </div>
           ) : null}
 
-          {task.sourceEmail ? (
-            <div className="task-card__section">
-              <div className="section-eyebrow">Original email</div>
-              <div className="message-card">
-                <div className="message-card__sender">{task.sourceEmail.senderName}</div>
-                <div className="message-card__meta">{task.sourceEmail.senderEmail}</div>
-                <div className="message-card__subject">{task.sourceEmail.subject}</div>
-                <pre className="message-card__body">{task.sourceEmail.body}</pre>
+          {showDraft ? (
+            <div className="task-draft">
+              <div
+                className={`task-section-label ${firstVisibleSection === 'draft' ? 'is-first' : ''}`}
+              >
+                Draft
+              </div>
+              {isEditingDraft ? (
+                <textarea
+                  className="approval-card__textarea"
+                  value={draftText}
+                  onChange={(event) => setDraftText(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  rows={8}
+                />
+              ) : (
+                <div className="draft-body">{draftContent}</div>
+              )}
+              <div className="draft-actions">
+                {isEditingDraft ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-approve"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSaveDraft(task.id, draftText);
+                        setIsEditingDraft(false);
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-edit"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDraftText(task.draftContent ?? task.draftPreview?.text ?? '');
+                        setIsEditingDraft(false);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-approve"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onApproveDraft(task);
+                      }}
+                    >
+                      Approve &amp; send
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-edit"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsEditingDraft(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-reject"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCancelTask(task);
+                      }}
+                    >
+                      Cancel task
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
 
-          {task.clarifyingQuestion ? (
-            <div className="task-card__section">
-              <div className="section-eyebrow">Question</div>
-              <div className="question-card">
-                <div className="question-card__copy">{task.clarifyingQuestion}</div>
-                <div className="question-card__actions">
+          {showClarifyingQuestion ? (
+            <div className={`task-clarify ${isResolvingQuestion ? 'is-resolving' : ''}`}>
+              <div
+                className={`task-section-label ${firstVisibleSection === 'question' ? 'is-first' : ''}`}
+              >
+                Question
+              </div>
+              <div className="clarify-row">
+                <span className="clarify-text">{task.clarifyingQuestion}</span>
+                <div className="clarify-btns">
                   <button
                     type="button"
-                    className={`secondary-button ${task.questionAnswer === 'yes' ? 'is-selected' : ''}`}
-                    onClick={() => onTaskQuestion(task.id, 'yes')}
+                    className={`btn-yes ${
+                      task.questionAnswer === 'yes' ? 'is-selected' : ''
+                    }`}
+                    disabled={isResolvingQuestion}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      resolveQuestion('yes');
+                    }}
                   >
                     Yes
                   </button>
                   <button
                     type="button"
-                    className={`secondary-button ${task.questionAnswer === 'no' ? 'is-selected' : ''}`}
-                    onClick={() => onTaskQuestion(task.id, 'no')}
+                    className={`btn-no ${
+                      task.questionAnswer === 'no' ? 'is-selected' : ''
+                    }`}
+                    disabled={isResolvingQuestion}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      resolveQuestion('no');
+                    }}
                   >
                     No
                   </button>
                 </div>
               </div>
+              <form
+                className="note-row"
+                onClick={(event) => event.stopPropagation()}
+                onSubmit={(event) => {
+                  event.stopPropagation();
+                  if (customAnswer.trim()) {
+                    submitCustomAnswer(event);
+                    return;
+                  }
+
+                  submitNote(event);
+                }}
+              >
+                <input
+                  type="text"
+                  value={customAnswer || note}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setCustomAnswer(nextValue);
+                    setNote(nextValue);
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                  className="note-input"
+                  placeholder="Or type a note..."
+                  disabled={isResolvingQuestion}
+                />
+                <button
+                  type="submit"
+                  className="btn-send"
+                  onClick={(event) => event.stopPropagation()}
+                  disabled={isResolvingQuestion}
+                >
+                  Send
+                </button>
+              </form>
             </div>
           ) : null}
 
-          {task.reviewFeedback ? (
-            <div className="task-card__section">
-              <div className="section-eyebrow">Review feedback</div>
-              <div className="info-chip">{task.reviewFeedback}</div>
-            </div>
+          {showAnsweredState ? (
+            <div className="task-answer">{formatTaskAnswer(task.questionAnswer)}</div>
           ) : null}
 
-          <div className="task-card__footer">
-            {canCancel ? (
+          {canCancelTask && (!showDraft || isEditingDraft) ? (
+            <div className="task-card__footer-actions">
               <button
                 type="button"
-                className="danger-button"
-                onClick={() => onCancel(task.id)}
+                className="btn-reject"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCancelTask(task);
+                }}
               >
                 Cancel task
               </button>
-            ) : (
-              <div className="task-card__complete">Completed and kept in today’s record.</div>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </article>
   );
 }
 
-function ApprovalCard({ approval, onApprovalAction }) {
+function ApprovalCard({
+  approval,
+  isRemoving,
+  onApprove,
+  onReject,
+  onSaveEdit,
+}) {
   const [isEditing, setIsEditing] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [draftText, setDraftText] = useState(approval.agentResponse);
 
   useEffect(() => {
     setIsEditing(false);
-    setFeedback('');
-  }, [approval.id]);
+    setDraftText(approval.agentResponse);
+  }, [approval.agentResponse, approval.id]);
 
   return (
-    <article className="approval-card">
-      <div className="approval-card__header">
-        <div>
-          <div className="section-eyebrow">{approval.tier}</div>
-          <h3 className="approval-card__title">{approval.subject}</h3>
-          <div className="approval-card__meta">
-            {approval.senderName} · {approval.senderEmail} · {formatRelativeTime(approval.createdAt)}
+    <article className={`approval-card ${isRemoving ? 'is-removing' : ''}`}>
+      <div className="approval-card__inner">
+        <div className="approval-card__header">
+          <div className="approval-card__sender">
+            <div className="approval-card__sender-name">{approval.senderName}</div>
+            <div className="approval-card__sender-email">{approval.senderEmail}</div>
           </div>
+          <span
+            className={`approval-card__badge ${
+              approval.status === 'edited' ? 'is-edited' : 'is-review'
+            }`}
+          >
+            {approval.status === 'edited' ? 'Edited' : 'Ready'}
+          </span>
         </div>
-        <span className="mini-pill">Review</span>
-      </div>
 
-      {approval.why ? <p className="approval-card__why">{approval.why}</p> : null}
-
-      <div className="approval-card__grid">
-        <section className="message-card">
-          <div className="section-eyebrow">Original email</div>
-          <div className="message-card__sender">{approval.sourceEmail.senderName}</div>
-          <div className="message-card__meta">{approval.sourceEmail.senderEmail}</div>
-          <div className="message-card__subject">{approval.sourceEmail.subject}</div>
-          <pre className="message-card__body">{approval.sourceEmail.body}</pre>
-        </section>
-
-        <section className="message-card message-card--reply">
-          <div className="section-eyebrow">Draft reply</div>
-          <pre className="message-card__body">{approval.agentResponse}</pre>
-        </section>
-      </div>
-
-      {isEditing ? (
-        <div className="approval-card__edit">
-          <label className="field">
-            <span className="field__label">Feedback for revision</span>
-            <textarea
-              className="field__input field__input--textarea"
-              rows="4"
-              value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
-              placeholder="Add the changes you want made to this drafted response."
-            />
-          </label>
-          <div className="approval-card__actions">
-            <button type="button" className="secondary-button" onClick={() => setIsEditing(false)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              disabled={!feedback.trim()}
-              onClick={() => void onApprovalAction(approval.id, 'edit', { feedback })}
-            >
-              Send back for edit
-            </button>
-          </div>
+        <div className="approval-card__subject">{approval.subject}</div>
+        <div className="approval-card__meta">
+          {formatRelativeTime(approval.createdAt)} · {approval.tier}
         </div>
-      ) : (
+
+        {approval.why ? <div className="approval-card__why-text">{approval.why}</div> : null}
+
+        <div className="approval-card__response-label">Draft</div>
+        {isEditing ? (
+          <textarea
+            className="approval-card__textarea"
+            rows="7"
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+          />
+        ) : (
+          <div className="approval-card__response">{approval.agentResponse}</div>
+        )}
+
         <div className="approval-card__actions">
           <button
             type="button"
-            className="primary-button"
-            onClick={() => void onApprovalAction(approval.id, 'approve')}
+            className="approval-action approval-action--approve"
+            onClick={() => onApprove(approval)}
           >
             Approve
           </button>
-          <button type="button" className="secondary-button" onClick={() => setIsEditing(true)}>
-            Request changes
+          <button
+            type="button"
+            className="approval-action approval-action--edit"
+            onClick={() => {
+              if (isEditing) {
+                onSaveEdit(approval, draftText);
+                setIsEditing(false);
+                return;
+              }
+
+              setIsEditing(true);
+            }}
+          >
+            {isEditing ? 'Save' : 'Edit'}
           </button>
           <button
             type="button"
-            className="danger-button"
-            onClick={() => void onApprovalAction(approval.id, 'reject')}
+            className="approval-action approval-action--reject"
+            onClick={() => onReject(approval)}
           >
             Reject
           </button>
         </div>
-      )}
+      </div>
     </article>
   );
 }
 
-function MemoryCard({
-  profile,
-  draft,
-  isLoading,
-  isEditing,
-  isSaving,
-  message,
-  onStartEdit,
-  onCancelEdit,
-  onFieldChange,
-  onSubmit,
-}) {
-  const isConfigured = hasMemoryContent(profile);
-  const visibleRows = MEMORY_FIELDS.filter((field) => String(profile?.[field.key] ?? '').trim());
+function PlanStepRows({ steps }) {
+  return steps.map((step, index) => (
+    <div
+      key={`${step.description}-${index}`}
+      className={`plan-step-row ${index < steps.length - 1 ? 'is-bordered' : ''}`}
+    >
+      <span className="plan-step-row__index">{index + 1}</span>
+      <span className="plan-step-row__description">{step.description}</span>
+      <span className={`tier-pill tier-${step.tier}`}>
+        {step.tier === 1 ? 'Auto' : step.tier === 2 ? 'Queued' : 'Review'}
+      </span>
+    </div>
+  ));
+}
+
+function AgentRunPanel({ planState, planSteps, onCancel, onApproveAll }) {
+  if (!planState) {
+    return null;
+  }
 
   return (
-    <article className="dashboard-card section-card" id="memory" style={{ '--delay': '340ms' }}>
-      <div className="section-header">
-        <div>
-          <div className="section-eyebrow">Memory</div>
-          <h2 className="section-title">Business context</h2>
+    <div className="plan-box">
+      {planState === 'loading' ? (
+        <div className="plan-box__loading">
+          <div className="plan-spinner" />
+          Working out a plan...
         </div>
-        {isConfigured && !isEditing ? (
-          <button type="button" className="secondary-button" onClick={onStartEdit}>
-            Edit
-          </button>
-        ) : null}
-      </div>
-
-      {isLoading ? (
-        <div className="empty-state">Loading saved context...</div>
       ) : null}
 
-      {!isLoading && (isEditing || !isConfigured) ? (
-        <form className="memory-form" onSubmit={onSubmit}>
-          <div className="memory-form__grid">
-            {MEMORY_FIELDS.map((field) => (
-              <label
-                key={field.key}
-                className={`field ${field.multiline ? 'field--full' : ''}`}
-              >
-                <span className="field__label">{field.label}</span>
-                {field.multiline ? (
-                  <textarea
-                    className="field__input field__input--textarea"
-                    rows="3"
-                    value={draft[field.key]}
-                    onChange={(event) => onFieldChange(field.key, event.target.value)}
-                    placeholder={field.placeholder}
-                  />
-                ) : (
-                  <input
-                    className="field__input"
-                    type="text"
-                    value={draft[field.key]}
-                    onChange={(event) => onFieldChange(field.key, event.target.value)}
-                    placeholder={field.placeholder}
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-          <div className="memory-form__actions">
-            {isConfigured ? (
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={isSaving}
-                onClick={onCancelEdit}
-              >
+      {planState === 'ready' ? (
+        <>
+          <div className="plan-box__header">
+            <span className="plan-box__label">Proposed plan</span>
+            <div className="plan-box__actions">
+              <button className="plan-cancel" onClick={onCancel}>
                 Cancel
               </button>
-            ) : null}
-            <button type="submit" className="primary-button" disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save memory'}
-            </button>
+              <button className="plan-approve-all" onClick={onApproveAll}>
+                Approve all
+              </button>
+            </div>
           </div>
+
+          <div className="plan-box__steps">
+            <PlanStepRows steps={planSteps} />
+          </div>
+        </>
+      ) : null}
+
+      {planState === 'error' ? (
+        <div className="plan-box__error">
+          <span className="plan-box__error-text">
+            Could not generate a plan — check your connection.
+          </span>
+          <button className="plan-cancel" onClick={onCancel}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HomePanel({
+  currentTime,
+  greetingName,
+  homeInput,
+  onHomeInputChange,
+  onHomeSubmit,
+  onChipClick,
+  onStatClick,
+  awaitingApprovalCount,
+  activeTaskCount,
+  resolvedThisWeekCount,
+  planState,
+  planSteps,
+  onDismissPlan,
+  onApprovePlan,
+}) {
+  const subtitle =
+    awaitingApprovalCount > 0
+      ? `${awaitingApprovalCount} awaiting approval`
+      : activeTaskCount > 0
+        ? `${activeTaskCount} active`
+        : '';
+
+  return (
+    <section className="panel-scroll__inner home-panel">
+      <div className="greeting-block">
+        <h2 className="display-title">{getGreetingForHour(currentTime.getHours(), greetingName)}</h2>
+        {subtitle ? <p className="greeting-subtitle">{subtitle}</p> : null}
+      </div>
+
+      <div className="stats-grid">
+        <button
+          type="button"
+          className="stat-card"
+          onClick={() => onStatClick('approvals')}
+        >
+          <div className="stat-card__label">Awaiting approval</div>
+          <div className="stat-card__value tone-accent">{awaitingApprovalCount}</div>
+        </button>
+
+        <button
+          type="button"
+          className="stat-card"
+          onClick={() => onStatClick('tasks')}
+        >
+          <div className="stat-card__label">Active tasks</div>
+          <div className="stat-card__value">{activeTaskCount}</div>
+        </button>
+
+        <button
+          type="button"
+          className="stat-card"
+          onClick={() => onStatClick('activity')}
+        >
+          <div className="stat-card__label">Resolved this week</div>
+          <div className="stat-card__value tone-success">{resolvedThisWeekCount}</div>
+        </button>
+      </div>
+
+      <section className="instruction-card">
+        <form className="instruction-card__row" onSubmit={onHomeSubmit}>
+          <input
+            type="text"
+            className="instruction-card__input"
+            value={homeInput}
+            onChange={(event) => onHomeInputChange(event.target.value)}
+            placeholder="What needs doing?"
+          />
+          <button
+            type="submit"
+            className="instruction-card__send"
+            aria-label="Send instruction"
+          >
+            <ArrowRightIcon />
+          </button>
+        </form>
+
+        <div className="chip-row">
+          {HOME_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              className="chip-button"
+              onClick={() => onChipClick(chip)}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {planState ? (
+        <AgentRunPanel
+          planState={planState}
+          planSteps={planSteps}
+          onCancel={onDismissPlan}
+          onApproveAll={onApprovePlan}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function TasksPanel({
+  taskInput,
+  onTaskInputChange,
+  onTaskSubmit,
+  taskFilter,
+  onTaskFilterChange,
+  showTaskComposer,
+  onNewTaskClick,
+  visibleTasks,
+  removingTasks,
+  expandedTaskId,
+  onToggleTask,
+  onAnswerQuestion,
+  onNoteSubmit,
+  onApproveDraft,
+  onCancelTask,
+  onSaveDraft,
+}) {
+  return (
+    <section className="panel-scroll__inner tasks-panel">
+      <div className="panel-heading panel-heading--row">
+        <h2 className="section-title">Tasks</h2>
+        <button
+          type="button"
+          className="primary-button"
+          aria-label="New task"
+          onClick={onNewTaskClick}
+        >
+          <PlusIcon />
+        </button>
+      </div>
+
+      {showTaskComposer ? (
+        <form className="task-composer" onSubmit={onTaskSubmit}>
+          <input
+            type="text"
+            className="task-composer__input"
+            value={taskInput}
+            onChange={(event) => onTaskInputChange(event.target.value)}
+            placeholder="New task"
+          />
+          <button type="submit" className="task-composer__send">
+            Add
+          </button>
         </form>
       ) : null}
 
-      {!isLoading && !isEditing && isConfigured ? (
-        <div className="memory-summary">
-          {visibleRows.map((row) => (
-            <div key={row.key} className="memory-summary__item">
-              <div className="memory-summary__label">{row.label}</div>
-              <div className="memory-summary__value">{profile[row.key]}</div>
-            </div>
+      <div className="filter-row">
+        {TASK_FILTERS.map((filter) => (
+          <button
+            key={filter}
+            type="button"
+            className={`filter-chip ${taskFilter === filter ? 'is-active' : ''}`}
+            onClick={() => onTaskFilterChange(filter)}
+          >
+            {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {visibleTasks.length ? (
+        <div className="task-list">
+          {visibleTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              isExpanded={expandedTaskId === task.id}
+              isCancelling={Boolean(removingTasks[task.id])}
+              onToggle={() => onToggleTask(task.id)}
+              onAnswerQuestion={onAnswerQuestion}
+              onNoteSubmit={onNoteSubmit}
+              onApproveDraft={onApproveDraft}
+              onCancelTask={onCancelTask}
+              onSaveDraft={onSaveDraft}
+            />
           ))}
         </div>
-      ) : null}
-
-      {!isLoading && !isEditing && !isConfigured ? (
-        <div className="empty-state">
-          Add business details so the dashboard can draft with the right context.
-        </div>
-      ) : null}
-
-      {message ? <div className="inline-message">{message}</div> : null}
-    </article>
+      ) : (
+        <div className="empty-card">No tasks</div>
+      )}
+    </section>
   );
 }
 
-function App() {
-  const notificationTimersRef = useRef({});
-  const taskPlanningTimersRef = useRef([]);
-  const pendingApprovalTimersRef = useRef({});
-  const googleOauthPollRef = useRef(null);
-  const processedEmailIdsRef = useRef(getStoredProcessedEmailIds());
-  const tasksRef = useRef([]);
-  const homeRunRef = useRef(null);
-  const composerRef = useRef(null);
+function ApprovalsPanel({
+  approvals,
+  removingApprovals,
+  onApprove,
+  onReject,
+  onSaveEdit,
+}) {
+  return (
+    <section className="panel-scroll__inner approvals-panel">
+      {approvals.length ? (
+        approvals.map((approval) => (
+          <ApprovalCard
+            key={approval.id}
+            approval={approval}
+            isRemoving={Boolean(removingApprovals[approval.id])}
+            onApprove={onApprove}
+            onReject={onReject}
+            onSaveEdit={onSaveEdit}
+          />
+        ))
+      ) : (
+        <div className="empty-card empty-card--center">No approvals</div>
+      )}
+    </section>
+  );
+}
 
-  const [currentTime, setCurrentTime] = useState(() => new Date());
+function ActivityPanel({
+  activityFilter,
+  onActivityFilterChange,
+  activityItems,
+  recentEmailsError,
+}) {
+  return (
+    <section className="panel-scroll__inner activity-panel">
+      <div className="panel-heading">
+        <h2 className="section-title">Activity</h2>
+      </div>
+
+      <div className="filter-row filter-row--spacious">
+        {ACTIVITY_FILTERS.map((filter) => (
+          <button
+            key={filter}
+            type="button"
+            className={`filter-chip ${activityFilter === filter ? 'is-active' : ''}`}
+            onClick={() => onActivityFilterChange(filter)}
+          >
+            {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      <ActivityList
+        items={activityItems}
+        emptyText="No activity"
+        showTimestamp
+      />
+      {recentEmailsError ? <div className="inline-error">{recentEmailsError}</div> : null}
+    </section>
+  );
+}
+
+function SettingsPanel({
+  activeSection,
+  googleConnected,
+  googleBusy,
+  onGoogleToggle,
+  onThemeToggle,
+  theme,
+  profile,
+  isMemoryLoading,
+  memoryError,
+}) {
+  const showMemoryEmptyState = !isMemoryLoading && !hasMemoryData(profile);
+  const nextThemeLabel = theme === 'dark' ? 'Switch to light' : 'Switch to dark';
+  const nextThemeIcon = theme === 'dark' ? <MoonIcon /> : <SunIcon />;
+
+  return (
+    <section className="panel-scroll__inner settings-panel">
+      {activeSection === 'connections' ? (
+        <section className="settings-section">
+          <div className="settings-section__heading">Connections</div>
+
+          <div className="connection-row">
+            <div className="connection-row__left">
+              <GoogleIcon />
+              <div>
+                <div className="connection-row__name">Google Workspace</div>
+                <div className="connection-row__meta">Gmail · Calendar</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`connection-button ${
+                googleConnected ? 'is-connected' : 'is-primary'
+              }`}
+              disabled={googleBusy}
+              onClick={onGoogleToggle}
+            >
+              {googleBusy
+                ? googleConnected
+                  ? 'Connected'
+                  : 'Connecting...'
+                : googleConnected
+                  ? 'Connected'
+                  : 'Connect Google'}
+            </button>
+          </div>
+
+          <div className="connection-row">
+            <div className="connection-row__left">
+              <XeroIcon />
+              <div>
+                <div className="connection-row__name">Xero</div>
+                <div className="connection-row__meta">Invoicing · Payments</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="connection-button is-primary is-disabled"
+              disabled
+              title="Coming soon"
+            >
+              Connect Xero
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {activeSection === 'appearance' ? (
+        <section className="settings-section">
+          <div className="settings-section__heading">Appearance</div>
+          <div className="settings-option-row">
+            <div>
+              <div className="tier-row__name">Theme</div>
+            </div>
+            <button
+              type="button"
+              className="connection-button is-primary"
+              onClick={onThemeToggle}
+            >
+              {nextThemeIcon}
+              <span>{nextThemeLabel}</span>
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {activeSection === 'memory' ? (
+        <section className="settings-section settings-section--memory">
+          <div className="settings-section__heading">Memory</div>
+          {memoryError ? <div className="inline-error">{memoryError}</div> : null}
+          {showMemoryEmptyState ? (
+            <div className="settings-empty-state">Nothing saved yet.</div>
+          ) : (
+            <MemoryPanel
+              profile={profile}
+              isLoading={isMemoryLoading}
+              memoryError=""
+            />
+          )}
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function MemoryPanel({ profile, isLoading, memoryError }) {
+  return (
+    <div className="memory-panel">
+      {memoryError ? <div className="inline-error">{memoryError}</div> : null}
+      <section className="settings-section">
+        <div className="settings-section__heading">Profile</div>
+        {BUSINESS_PROFILE_ROWS.map((row) => (
+          <div key={row.key} className="memory-row">
+            <div className="memory-row__label">{row.label}</div>
+            <div className="memory-row__value">
+              {isLoading ? 'Loading...' : trimToNull(profile[row.key]) ?? '—'}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">Preferences</div>
+        {PREFERENCE_ROWS.map((row) => {
+          const label =
+            row.key === MEMORY_KEYS.replyTone
+              ? `Reply tone (${parseInt(profile[MEMORY_KEYS.replyToneEdits] || '0', 10) || 0} edits)`
+              : row.label;
+
+          return (
+            <div key={row.key} className="memory-preference">
+              <div className="memory-preference__label">{label}</div>
+              <div className="memory-preference__description">
+                {isLoading ? 'Loading...' : trimToNull(profile[row.key]) ?? '—'}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+function DashboardApp() {
+  const { flick, flashWandState, setWandState } = useWandState();
+  const processedEmailIdsRef = useRef(getStoredProcessedEmailIds());
+  const oauthPollRef = useRef(null);
+  const profileMenuTimerRef = useRef(null);
+  const panelTimersRef = useRef([]);
+  const themeSwitchTimerRef = useRef(null);
+  const processingTimerRef = useRef(null);
+  const approvalTimersRef = useRef({});
+  const panelFrameRef = useRef(null);
+  const pendingPanelRef = useRef(null);
+  const isPanelTransitioningRef = useRef(false);
+  const activePanelRef = useRef('home');
+
   const [theme, setTheme] = useState(getInitialTheme);
+  const [isThemeSwitching, setIsThemeSwitching] = useState(false);
   const [sessionToken, setSessionToken] = useState(getStoredSession);
-  const [composerText, setComposerText] = useState('');
-  const [isTaskPlanning, setIsTaskPlanning] = useState(false);
-  const [homeRun, setHomeRun] = useState(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [activePanel, setActivePanel] = useState('home');
+  const [settingsSection, setSettingsSection] = useState('connections');
+  const [profileMenuState, setProfileMenuState] = useState(null);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [homeInput, setHomeInput] = useState('');
+  const [taskInput, setTaskInput] = useState('');
+  const [showTaskComposer, setShowTaskComposer] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isWorkflowProcessing, setIsWorkflowProcessing] = useState(false);
+  const [planState, setPlanState] = useState(null);
+  const [homePlanSteps, setHomePlanSteps] = useState([]);
+  const [homeRunTask, setHomeRunTask] = useState(null);
+  const [businessContactName, setBusinessContactName] = useState('');
+  const [sessionBusinessName, setSessionBusinessName] = useState('');
   const [tasks, setTasks] = useState([]);
   const [taskFilter, setTaskFilter] = useState('all');
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [approvals, setApprovals] = useState([]);
+  const [removingTasks, setRemovingTasks] = useState({});
+  const [removingApprovals, setRemovingApprovals] = useState({});
   const [activity, setActivity] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [resolvedCount, setResolvedCount] = useState(0);
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
-  const [isGoogleBusy, setIsGoogleBusy] = useState(false);
+  const [activityFilter, setActivityFilter] = useState('all');
   const [recentEmails, setRecentEmails] = useState([]);
-  const [isRecentEmailsLoading, setIsRecentEmailsLoading] = useState(false);
-  const [recentEmailsMessage, setRecentEmailsMessage] = useState(
-    getStoredSession() ? '' : 'Connect Google to load real inbox activity.',
-  );
-  const [memoryProfile, setMemoryProfile] = useState({});
-  const [memoryDraft, setMemoryDraft] = useState(createEmptyMemoryDraft);
+  const [recentEmailsError, setRecentEmailsError] = useState('');
+  const [memoryProfile, setMemoryProfile] = useState(createEmptyMemoryProfile);
   const [isMemoryLoading, setIsMemoryLoading] = useState(true);
-  const [isMemoryEditing, setIsMemoryEditing] = useState(false);
-  const [isMemorySaving, setIsMemorySaving] = useState(false);
-  const [memoryMessage, setMemoryMessage] = useState('');
+  const [memoryError, setMemoryError] = useState('');
+
+  const sortedTasks = [...tasks].sort((left, right) => right.updatedAt - left.updatedAt);
+  const visibleTasks = sortedTasks.filter((task) =>
+    taskFilter === 'all' ? true : task.status === taskFilter,
+  );
+  const sortedApprovals = [...approvals].sort((left, right) => right.createdAt - left.createdAt);
+  const activeTaskCount = tasks.filter((task) => task.status !== 'done').length;
+  const businessName =
+    trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? 'Olivander Technologies';
+  const profileMeta = trimToNull(memoryProfile[MEMORY_KEYS.businessType]) ?? 'Workspace';
+  const isSettingsPanel = activePanel === 'settings';
 
   useEffect(() => {
-    tasksRef.current = tasks;
-  }, [tasks]);
+    activePanelRef.current = activePanel;
+  }, [activePanel]);
+
+  const combinedActivity = [
+    ...activity,
+    ...recentEmails.map((email) => ({
+      id: `gmail-${email.id}`,
+      title: trimToNull(email.senderName ?? email.from_name ?? email.from) ?? 'Inbox message',
+      description:
+        trimToNull(email.subject ?? email.snippet ?? email.body) ?? 'Recent Gmail activity',
+      createdAt: toTimestamp(email.date),
+      timestamp: toTimestamp(email.date),
+      type: 'draft',
+    })),
+  ].sort(
+    (left, right) =>
+      (right.createdAt ?? right.timestamp ?? 0) - (left.createdAt ?? left.timestamp ?? 0),
+  );
+
+  const visibleActivity = filterActivityItems(combinedActivity, activityFilter);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const resolvedThisWeekCount = activity.filter(
+    (item) =>
+      (item.type === 'auto' || item.type === 'approved') && item.createdAt >= weekAgo,
+  ).length;
+  const sessionPayload = decodeSessionPayload(sessionToken);
+  const tokenContactName = trimToNull(String(sessionPayload?.contact_name ?? '')) ?? '';
+  const tokenEmailName =
+    trimToNull(String(sessionPayload?.email ?? '').split('@')[0] ?? '') ?? '';
+  const memoryBusinessName = trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? '';
+  const resolvedBusinessName =
+    (trimToNull(sessionBusinessName) ?? '') ||
+    (memoryBusinessName && memoryBusinessName !== 'Olivander Technologies'
+      ? memoryBusinessName
+      : '');
+  const greetingName =
+    tokenContactName ||
+    (trimToNull(businessContactName) ?? '') ||
+    resolvedBusinessName ||
+    tokenEmailName;
 
   useEffect(() => {
-    homeRunRef.current = homeRun;
-  }, [homeRun]);
-
-  useEffect(() => {
-    if (!tasks.length) {
-      setExpandedTaskId(null);
-      return;
-    }
-
-    if (expandedTaskId && tasks.some((task) => task.id === expandedTaskId)) {
-      return;
-    }
-
-    setExpandedTaskId(tasks[0].id);
-  }, [expandedTaskId, tasks]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle('dark', theme === 'dark');
+    document.documentElement.classList.toggle('dark', theme === 'dark');
     window.localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
@@ -1243,25 +2206,64 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const textarea = composerRef.current;
-
-    if (!textarea) {
+    if (!tasks.length) {
+      setExpandedTaskId(null);
       return;
     }
 
-    textarea.style.height = '0px';
-    textarea.style.height = `${Math.max(136, Math.min(textarea.scrollHeight, 260))}px`;
-  }, [composerText]);
+    if (expandedTaskId === null) {
+      return;
+    }
+
+    if (tasks.some((task) => task.id === expandedTaskId)) {
+      return;
+    }
+
+    setExpandedTaskId(tasks[0].id);
+  }, [expandedTaskId, tasks]);
+
+  useEffect(() => {
+    const nextBaseState = isPlanning
+      ? 'thinking'
+      : isWorkflowProcessing
+        ? 'processing'
+        : googleConnected || activeTaskCount || sortedApprovals.length
+          ? 'active'
+          : 'inactive';
+
+    setWandState(nextBaseState);
+  }, [
+    activeTaskCount,
+    googleConnected,
+    isPlanning,
+    isWorkflowProcessing,
+    sortedApprovals.length,
+    setWandState,
+  ]);
 
   useEffect(
     () => () => {
-      taskPlanningTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      Object.values(notificationTimersRef.current).forEach((timer) => window.clearTimeout(timer));
-      Object.values(pendingApprovalTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      panelTimersRef.current.forEach((timer) => window.clearTimeout(timer));
 
-      if (googleOauthPollRef.current) {
-        window.clearInterval(googleOauthPollRef.current);
+      if (processingTimerRef.current) {
+        window.clearTimeout(processingTimerRef.current);
       }
+
+      if (profileMenuTimerRef.current) {
+        window.clearTimeout(profileMenuTimerRef.current);
+      }
+
+      if (themeSwitchTimerRef.current) {
+        window.clearTimeout(themeSwitchTimerRef.current);
+      }
+
+      if (oauthPollRef.current) {
+        window.clearInterval(oauthPollRef.current);
+      }
+
+      Object.values(approvalTimersRef.current).forEach((timer) => {
+        window.clearTimeout(timer);
+      });
     },
     [],
   );
@@ -1271,18 +2273,19 @@ function App() {
 
     async function loadMemory() {
       if (!sessionToken) {
-        setMemoryProfile({});
-        setMemoryDraft(createEmptyMemoryDraft());
-        setMemoryMessage('Connect Google to unlock saved memory.');
+        setMemoryProfile(createEmptyMemoryProfile());
+        setMemoryError('');
         setIsMemoryLoading(false);
         return;
       }
+
+      setIsMemoryLoading(true);
+      setMemoryError('');
 
       try {
         const response = await fetchProtected('/api/memory');
 
         if (response.status === 401) {
-          clearGoogleSession({ notify: true });
           return;
         }
 
@@ -1290,22 +2293,16 @@ function App() {
           throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
         }
 
-        const data = await response.json();
+        const payload = await response.json();
 
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setMemoryProfile(normaliseMemoryProfile(payload));
         }
-
-        setMemoryProfile(data ?? {});
-        setMemoryDraft(mapProfileToDraft(data ?? {}));
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setMemoryProfile(createEmptyMemoryProfile());
+          setMemoryError('Could not load — check connection');
         }
-
-        setMemoryProfile({});
-        setMemoryDraft(createEmptyMemoryDraft());
-        setMemoryMessage('Could not load saved memory. You can still set it up now.');
       } finally {
         if (!cancelled) {
           setIsMemoryLoading(false);
@@ -1313,58 +2310,164 @@ function App() {
       }
     }
 
-    loadMemory();
+    void loadMemory();
 
     return () => {
       cancelled = true;
     };
   }, [sessionToken]);
 
-  function clearTaskPlanningTimers() {
-    taskPlanningTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    taskPlanningTimersRef.current = [];
-  }
+  useEffect(() => {
+    function handleOauthMessage(event) {
+      if (event.origin !== BACKEND_ORIGIN) {
+        return;
+      }
 
-  function clearPendingApproval(taskId) {
-    const timer = pendingApprovalTimersRef.current[taskId];
+      const payload = event.data ?? {};
 
-    if (timer) {
-      window.clearTimeout(timer);
-      delete pendingApprovalTimersRef.current[taskId];
+      if (payload.source !== 'olivander-google-oauth' || payload.provider !== 'google') {
+        return;
+      }
+
+      if (oauthPollRef.current) {
+        window.clearInterval(oauthPollRef.current);
+        oauthPollRef.current = null;
+      }
+
+      const nextSession = trimToNull(String(payload.session ?? ''));
+
+      if (nextSession) {
+        persistSession(nextSession);
+        setSessionToken(nextSession);
+      }
+
+      setGoogleConnected(true);
+      setGoogleBusy(false);
+      addActivityItem('resolved', 'Google Workspace connected', 'Gmail and Calendar are ready.');
+      flashWandState('success', SUCCESS_FLASH_MS);
     }
-  }
 
-  function dismissNotification(notificationId) {
-    const timer = notificationTimersRef.current[notificationId];
+    window.addEventListener('message', handleOauthMessage);
+    void syncGoogleConnectionStatus({ silent: true });
 
-    if (timer) {
-      window.clearTimeout(timer);
-      delete notificationTimersRef.current[notificationId];
+    return () => {
+      window.removeEventListener('message', handleOauthMessage);
+    };
+  }, [flashWandState, sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken) {
+      setRecentEmails([]);
+      setRecentEmailsError('');
+      return undefined;
     }
 
-    setNotifications((current) =>
-      current.filter((notification) => notification.id !== notificationId),
-    );
-  }
+    let cancelled = false;
+    let syncing = false;
 
-  function pushNotification({ title, description, tone = 'accent' }) {
-    const notificationId = createId('notification');
+    async function syncInbox() {
+      if (cancelled || syncing) {
+        return;
+      }
 
-    setNotifications((current) =>
-      [
-        {
-          id: notificationId,
-          title,
-          description,
-          tone,
-        },
-        ...current,
-      ].slice(0, 4),
-    );
+      syncing = true;
 
-    notificationTimersRef.current[notificationId] = window.setTimeout(() => {
-      dismissNotification(notificationId);
-    }, NOTIFICATION_TIMEOUT_MS);
+      try {
+        const response = await fetchProtected('/api/emails');
+
+        if (response.status === 401) {
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Failed with status ${response.status}`);
+        }
+
+        const inbox = await response.json();
+
+        if (!cancelled) {
+          setRecentEmailsError('');
+          reconcileInboxSnapshot(inbox);
+        }
+      } catch {
+        if (!cancelled) {
+          setRecentEmailsError('Could not load — check connection');
+        }
+      } finally {
+        syncing = false;
+      }
+    }
+
+    void syncInbox();
+
+    const interval = window.setInterval(syncInbox, INBOX_SYNC_INTERVAL_MS);
+
+    function handleFocus() {
+      void syncInbox();
+    }
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken) {
+      setRecentEmails([]);
+      setRecentEmailsError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadRecentEmails() {
+      setRecentEmailsError('');
+
+      try {
+        const response = await fetchProtected(`/gmail/recent?max_results=${RECENT_EMAILS_MAX}`);
+
+        if (response.status === 401) {
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        if (!cancelled) {
+          setRecentEmails(Array.isArray(payload) ? payload : []);
+          setRecentEmailsError('');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRecentEmails([]);
+          setRecentEmailsError('Could not load — check connection');
+        }
+      }
+    }
+
+    void loadRecentEmails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, approvals.length, tasks.length]);
+
+  function pulseProcessing(duration = PROCESSING_PULSE_MS) {
+    if (processingTimerRef.current) {
+      window.clearTimeout(processingTimerRef.current);
+    }
+
+    setIsWorkflowProcessing(true);
+    processingTimerRef.current = window.setTimeout(() => {
+      setIsWorkflowProcessing(false);
+    }, duration);
   }
 
   function addActivityItem(type, title, description) {
@@ -1380,32 +2483,6 @@ function App() {
     ]);
   }
 
-  function clearGoogleSession(options = {}) {
-    const {
-      message = 'Connect Google to load real inbox activity.',
-      notify = false,
-      notificationTitle = 'Google session expired',
-      notificationDescription = 'Reconnect Google Workspace to keep syncing Gmail.',
-    } = options;
-
-    persistSession(null);
-    setSessionToken(null);
-    setIsGoogleConnected(false);
-    setIsGoogleBusy(false);
-    setRecentEmails([]);
-    setRecentEmailsMessage(message);
-    processedEmailIdsRef.current = new Set();
-    persistProcessedEmailIds(processedEmailIdsRef.current);
-
-    if (notify) {
-      pushNotification({
-        title: notificationTitle,
-        description: notificationDescription,
-        tone: 'warning',
-      });
-    }
-  }
-
   function buildAuthHeaders(headers = {}) {
     const nextHeaders = new Headers(headers);
 
@@ -1416,168 +2493,49 @@ function App() {
     return nextHeaders;
   }
 
+  function clearSessionState() {
+    persistSession(null);
+    setSessionToken(null);
+    setGoogleConnected(false);
+    setBusinessContactName('');
+    setSessionBusinessName('');
+    processedEmailIdsRef.current = new Set();
+    persistProcessedEmailIds(processedEmailIdsRef.current);
+  }
+
   async function fetchProtected(path, options = {}) {
-    return fetch(buildBackendUrl(path), {
-      ...options,
-      credentials: 'include',
-      headers: buildAuthHeaders(options.headers),
-    });
-  }
-
-  async function fetchAgentPlan(request, options = {}) {
-    if (!sessionToken) {
-      throw new Error('Connect Google before planning tasks.');
-    }
-
-    const response = await fetchProtected('/api/agent/plan', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        request,
-        source_email: options.sourceEmail ?? null,
-        review_feedback: options.reviewFeedback ?? null,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
-    }
-
-    return response.json();
-  }
-
-  async function createTaskWithAgentPlan(request, options = {}) {
-    const fallbackTask = options.baseTask ?? buildTaskFromPrompt(request);
-
     try {
-      const agentPlan = await fetchAgentPlan(request, options);
-      return buildTaskFromAgentPlan(request, agentPlan, {
+      const response = await fetch(buildBackendUrl(path), {
         ...options,
-        baseTask: fallbackTask,
+        credentials: 'include',
+        headers: buildAuthHeaders(options.headers),
       });
-    } catch (error) {
-      console.error('Could not build agent plan.', error);
 
-      if (options.allowFallback) {
-        return buildTaskFromAgentPlan(request, null, {
-          ...options,
-          baseTask: fallbackTask,
-        });
+      if (response.status === 401 && sessionToken) {
+        clearSessionState();
+        requestPanel('home');
       }
 
+      return response;
+    } catch (error) {
       throw error;
     }
   }
 
-  function runTaskSequence(task) {
-    const preview = createAgentRun(task);
-    const draftChunkSize = 1;
-    const draftCharDelayMs = 22;
-    const stepDelayMs = 520;
-    const draftStartDelayMs = 760;
-    const draftSteps = preview.draftTarget
-      ? Math.ceil(preview.draftTarget.length / draftChunkSize)
-      : 0;
-    const draftDurationMs = draftSteps * draftCharDelayMs;
-    const finalDelayMs = Math.max(
-      preview.steps.length * stepDelayMs + 540,
-      draftStartDelayMs + draftDurationMs + 320,
-    );
-
-    clearTaskPlanningTimers();
-    setHomeRun(preview);
-
-    preview.steps.forEach((step, index) => {
-      const timer = window.setTimeout(() => {
-        setHomeRun((current) => {
-          if (!current || current.taskId !== task.id) {
-            return current;
-          }
-
-          return {
-            ...current,
-            completedStepCount: Math.max(current.completedStepCount, index + 1),
-            activeStepIndex: Math.min(index + 1, current.steps.length - 1),
-            status:
-              current.draftTarget && index >= 1
-                ? current.draftLabel ?? 'Working'
-                : 'Thinking',
-          };
-        });
-      }, (index + 1) * stepDelayMs);
-
-      taskPlanningTimersRef.current.push(timer);
-    });
-
-    if (preview.draftTarget) {
-      for (
-        let offset = draftChunkSize, tick = 0;
-        offset <= preview.draftTarget.length + draftChunkSize;
-        offset += draftChunkSize, tick += 1
-      ) {
-        const timer = window.setTimeout(() => {
-          setHomeRun((current) => {
-            if (!current || current.taskId !== task.id) {
-              return current;
-            }
-
-            return {
-              ...current,
-              status: current.draftLabel ?? 'Writing',
-              draftText: current.draftTarget.slice(
-                0,
-                Math.min(offset, current.draftTarget.length),
-              ),
-            };
-          });
-        }, draftStartDelayMs + tick * draftCharDelayMs);
-
-        taskPlanningTimersRef.current.push(timer);
-      }
-    }
-
-    const completionTimer = window.setTimeout(() => {
-      setHomeRun((current) => {
-        if (!current || current.taskId !== task.id) {
-          return current;
-        }
-
-        return {
-          ...current,
-          status: 'Ready',
-          completedStepCount: current.steps.length,
-          activeStepIndex: current.steps.length - 1,
-          draftText: current.draftTarget || current.draftText,
-          isComplete: true,
-        };
-      });
-
-      setIsTaskPlanning(false);
-      addActivityItem('pending', 'Task planned', 'Added to the dashboard queue.');
-      pushNotification({
-        title: 'Task added',
-        description: task.name,
-        tone: 'success',
-      });
-    }, finalDelayMs);
-
-    taskPlanningTimersRef.current.push(completionTimer);
-  }
-
-  async function syncGoogleConnectionStatus({ announce = false, silent = false } = {}) {
-    if (!sessionToken) {
-      setIsGoogleConnected(false);
-      setIsGoogleBusy(false);
-      return false;
-    }
-
+  async function syncGoogleConnectionStatus({ silent = false } = {}) {
     try {
-      const response = await fetchProtected('/api/connections');
+      const response = await fetch(buildBackendUrl('/api/connections'), {
+        credentials: 'include',
+        headers: buildAuthHeaders(),
+      });
 
       if (response.status === 401) {
-        clearGoogleSession({ notify: true });
+        if (sessionToken) {
+          clearSessionState();
+        }
+        setGoogleConnected(false);
+        setBusinessContactName('');
+        setSessionBusinessName('');
         return false;
       }
 
@@ -1585,107 +2543,147 @@ function App() {
         throw new Error(`Failed with status ${response.status}`);
       }
 
-      const data = await response.json();
-      const nextStatus = Boolean(data.google);
-
-      setIsGoogleConnected((current) => {
-        if (announce && current !== nextStatus) {
-          addActivityItem(
-            nextStatus ? 'resolved' : 'pending',
-            `Google Workspace ${nextStatus ? 'connected' : 'disconnected'}`,
-            nextStatus ? 'Gmail and Calendar are available.' : 'Google access was removed.',
-          );
-
-          pushNotification({
-            title: `Google Workspace ${nextStatus ? 'connected' : 'disconnected'}`,
-            description: nextStatus
-              ? 'Gmail and Calendar are available.'
-              : 'Google access was removed.',
-            tone: nextStatus ? 'success' : 'warning',
-          });
-        }
-
-        return nextStatus;
-      });
-
-      setIsGoogleBusy(false);
-      return nextStatus;
+      const payload = await response.json();
+      const isConnected = Boolean(payload.google);
+      setBusinessContactName(
+        trimToNull(String(payload.contact_name ?? payload.first_name ?? '')) ?? '',
+      );
+      setSessionBusinessName(trimToNull(String(payload.business_name ?? '')) ?? '');
+      setGoogleConnected(isConnected);
+      return isConnected;
     } catch (error) {
-      setIsGoogleBusy(false);
+      setGoogleConnected(false);
+      setBusinessContactName('');
+      setSessionBusinessName('');
 
       if (!silent) {
-        pushNotification({
-          title: 'Google connection unavailable',
-          description: 'Could not reach the OAuth service.',
-          tone: 'danger',
-        });
+        flashWandState('error', ERROR_FLASH_MS);
       }
 
-      return null;
+      return false;
     }
   }
 
-  useEffect(() => {
-    function handleOauthMessage(event) {
-      if (event.origin !== BACKEND_ORIGIN) {
-        return;
-      }
-
-      const data = event.data ?? {};
-
-      if (data.source === 'olivander-google-oauth' && data.provider === 'google') {
-        if (googleOauthPollRef.current) {
-          window.clearInterval(googleOauthPollRef.current);
-          googleOauthPollRef.current = null;
-        }
-
-        const nextSession = String(data.session ?? '').trim();
-
-        if (nextSession) {
-          persistSession(nextSession);
-          setSessionToken(nextSession);
-          setRecentEmailsMessage('');
-        }
-
-        setIsGoogleConnected(true);
-        setIsGoogleBusy(false);
-        addActivityItem('resolved', 'Google Workspace connected', 'Session stored for Gmail sync.');
-        pushNotification({
-          title: 'Google Workspace connected',
-          description: 'Session saved and ready to sync Gmail.',
-          tone: 'success',
-        });
-      }
+  function requestPanel(nextPanel) {
+    if (nextPanel === activePanel || isPanelTransitioningRef.current) {
+      closeProfileMenu();
+      return;
     }
 
-    window.addEventListener('message', handleOauthMessage);
-    void syncGoogleConnectionStatus({ silent: true });
-
-    return () => {
-      window.removeEventListener('message', handleOauthMessage);
-    };
-  }, [sessionToken]);
-
-  function watchGoogleOauthPopup(popupWindow) {
-    if (googleOauthPollRef.current) {
-      window.clearInterval(googleOauthPollRef.current);
+    if (profileMenuTimerRef.current) {
+      window.clearTimeout(profileMenuTimerRef.current);
     }
 
-    googleOauthPollRef.current = window.setInterval(() => {
+    panelTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    panelTimersRef.current = [];
+
+    closeProfileMenu();
+    isPanelTransitioningRef.current = true;
+    pendingPanelRef.current = nextPanel;
+    panelFrameRef.current?.classList.remove('panel-enter', 'panel-exit');
+    panelFrameRef.current?.classList.add('panel-exit');
+
+    panelTimersRef.current.push(
+      window.setTimeout(() => {
+        setActivePanel(pendingPanelRef.current ?? nextPanel);
+
+        panelTimersRef.current.push(
+          window.setTimeout(() => {
+            const frame = panelFrameRef.current;
+            frame?.classList.remove('panel-exit');
+
+            if (frame) {
+              void frame.offsetWidth;
+              frame.classList.add('panel-enter');
+            }
+
+            panelTimersRef.current.push(
+              window.setTimeout(() => {
+                panelFrameRef.current?.classList.remove('panel-enter');
+                isPanelTransitioningRef.current = false;
+                pendingPanelRef.current = null;
+              }, PANEL_ENTER_MS),
+            );
+          }, 16),
+        );
+      }, PANEL_EXIT_MS),
+    );
+  }
+
+  function openSettings(section) {
+    setSettingsSection(section);
+
+    if (activePanel === 'settings') {
+      closeProfileMenu();
+      return;
+    }
+
+    requestPanel('settings');
+  }
+
+  function handleLogoClick() {
+    setSettingsSection('connections');
+    requestPanel('home');
+  }
+
+  function handleSettingsBack() {
+    setSettingsSection('connections');
+    requestPanel('home');
+  }
+
+  function openProfileMenu() {
+    if (profileMenuTimerRef.current) {
+      window.clearTimeout(profileMenuTimerRef.current);
+    }
+
+    setProfileMenuState('open');
+  }
+
+  function closeProfileMenu() {
+    if (!profileMenuState) {
+      return;
+    }
+
+    if (profileMenuTimerRef.current) {
+      window.clearTimeout(profileMenuTimerRef.current);
+    }
+
+    setProfileMenuState('closing');
+    profileMenuTimerRef.current = window.setTimeout(() => {
+      setProfileMenuState(null);
+    }, DEFAULT_POPUP_CLOSE_MS);
+  }
+
+  function toggleProfileMenu() {
+    if (profileMenuState === 'open') {
+      closeProfileMenu();
+      return;
+    }
+
+    openProfileMenu();
+  }
+
+  function watchOauthPopup(popupWindow) {
+    if (oauthPollRef.current) {
+      window.clearInterval(oauthPollRef.current);
+    }
+
+    oauthPollRef.current = window.setInterval(() => {
       if (!popupWindow || popupWindow.closed) {
-        window.clearInterval(googleOauthPollRef.current);
-        googleOauthPollRef.current = null;
-        void syncGoogleConnectionStatus({ announce: true, silent: true });
+        window.clearInterval(oauthPollRef.current);
+        oauthPollRef.current = null;
+        setGoogleBusy(false);
+        void syncGoogleConnectionStatus({ silent: true });
       }
     }, 700);
   }
 
   async function handleGoogleConnect() {
-    if (isGoogleConnected || isGoogleBusy) {
+    if (googleConnected || googleBusy) {
       return;
     }
 
-    setIsGoogleBusy(true);
+    setGoogleBusy(true);
 
     try {
       const response = await fetch(buildBackendUrl('/auth/google'), {
@@ -1696,9 +2694,9 @@ function App() {
         throw new Error(`Failed with status ${response.status}`);
       }
 
-      const data = await response.json();
+      const payload = await response.json();
       const popupWindow = window.open(
-        data.url,
+        payload.url,
         'olivander-google-oauth',
         'popup=yes,width=560,height=720',
       );
@@ -1708,107 +2706,216 @@ function App() {
       }
 
       popupWindow.focus();
-      watchGoogleOauthPopup(popupWindow);
+      watchOauthPopup(popupWindow);
     } catch (error) {
-      setIsGoogleBusy(false);
-      pushNotification({
-        title: 'Google sign-in failed',
-        description:
-          error instanceof Error && error.message === 'Popup blocked'
-            ? 'Allow pop-ups for this site and try again.'
-            : 'Could not start the Google OAuth flow.',
-        tone: 'danger',
-      });
+      setGoogleBusy(false);
+      flashWandState('error', ERROR_FLASH_MS);
     }
   }
 
   async function handleGoogleDisconnect() {
-    if (!isGoogleConnected || isGoogleBusy || !sessionToken) {
+    if (!googleConnected || googleBusy) {
       return;
     }
 
-    setIsGoogleBusy(true);
+    setGoogleBusy(true);
 
     try {
       const response = await fetchProtected('/api/connections/google/disconnect', {
         method: 'POST',
       });
 
+      if (response.status === 401) {
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
       }
 
-      clearGoogleSession({
-        message: 'Connect Google to load real inbox activity.',
-      });
-      addActivityItem('pending', 'Google Workspace disconnected', 'Stored session was cleared.');
-      pushNotification({
-        title: 'Google disconnected',
-        description: 'Reconnect Google Workspace to resume Gmail sync.',
-        tone: 'warning',
-      });
+      clearSessionState();
+      setGoogleBusy(false);
+      addActivityItem('pending', 'Google Workspace disconnected', 'Stored access was removed.');
+      openSettings('connections');
     } catch (error) {
-      setIsGoogleBusy(false);
-      pushNotification({
-        title: 'Google disconnect failed',
-        description: 'Could not disconnect Google Workspace right now.',
-        tone: 'danger',
-      });
+      setGoogleBusy(false);
+      flashWandState('error', ERROR_FLASH_MS);
     }
   }
 
-  function scheduleApprovalForEmail(email, taskId) {
-    if (!email.requiresApproval) {
+  async function fetchAgentPlan(request, sourceEmail = null) {
+    const response = await fetchProtected('/api/agent/plan', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        request,
+        source_email: sourceEmail,
+      }),
+    });
+
+    if (response.status === 401) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+    }
+
+    return response.json();
+  }
+
+  async function createTaskWithAgentPlan(request, options = {}) {
+    const fallbackTask = options.baseTask ?? buildTaskFromRequest(request, options);
+    const sourceEmail = options.sourceEmail ?? null;
+
+    if (USE_MOCK_AGENT_PLAN) {
+      await new Promise((resolve) => window.setTimeout(resolve, PLAN_MOCK_DELAY_MS));
+
+      return {
+        ...normaliseAgentPlan(fallbackTask, createMockAgentPlan(request, sourceEmail)),
+        planRequestState: 'ready',
+      };
+    }
+
+    try {
+      const agentPlan = await fetchAgentPlan(request, sourceEmail);
+      if (!agentPlan) {
+        return {
+          ...normaliseAgentPlan(fallbackTask, createMockAgentPlan(request, sourceEmail)),
+          planRequestState: 'ready',
+        };
+      }
+
+      const normalisedTask = normaliseAgentPlan(fallbackTask, agentPlan);
+      const hasStructuredPlan = Array.isArray(agentPlan.steps) && agentPlan.steps.length > 0;
+
+      if (!hasStructuredPlan) {
+        return {
+          ...normaliseAgentPlan(normalisedTask, createMockAgentPlan(request, sourceEmail)),
+          planRequestState: 'ready',
+        };
+      }
+
+      return {
+        ...normalisedTask,
+        planRequestState: 'ready',
+      };
+    } catch {
+      return {
+        ...normaliseAgentPlan(fallbackTask, createMockAgentPlan(request, sourceEmail)),
+        planRequestState: 'ready',
+      };
+    }
+  }
+
+  async function submitInstruction(text, origin) {
+    const value = text.trim();
+
+    if (!value || isPlanning) {
       return;
     }
 
-    clearPendingApproval(taskId);
+    flick();
+    pulseProcessing();
+    setIsPlanning(true);
 
-    pendingApprovalTimersRef.current[taskId] = window.setTimeout(() => {
-      delete pendingApprovalTimersRef.current[taskId];
-
-      let shouldCreateApproval = false;
-
-      setTasks((current) =>
-        current.map((item) => {
-          if (item.id !== taskId) {
-            return item;
-          }
-
-          if (item.status === 'done') {
-            return item;
-          }
-
-          shouldCreateApproval = true;
-          return {
-            ...item,
-            status: 'waiting',
-            updatedAt: Date.now(),
-          };
-        }),
-      );
-
-      if (!shouldCreateApproval) {
-        return;
+    try {
+      const baseTask = buildTaskFromRequest(value, {
+        planSteps: [],
+        draftPreview: null,
+        draftContent: null,
+        clarifyingQuestion: null,
+        planRequestState: 'loading',
+      });
+      if (origin === 'home') {
+        setPlanState('loading');
+        setHomePlanSteps([]);
+        setHomeRunTask(null);
       }
 
-      const approval = buildApprovalFromEmail(email, taskId);
+      setTasks((current) => [baseTask, ...current]);
+      setExpandedTaskId(baseTask.id);
+      addActivityItem('draft', 'Task created', baseTask.name);
+
+      if (origin === 'home') {
+        panelTimersRef.current.push(
+          window.setTimeout(() => {
+            setPlanState(null);
+            setHomePlanSteps([]);
+            setHomeRunTask(null);
+            requestPanel('tasks');
+          }, TASKS_AUTO_NAV_DELAY_MS),
+        );
+      }
+
+      const createdTask = await createTaskWithAgentPlan(value, { baseTask });
+      setTasks((current) =>
+        current.map((task) => (task.id === baseTask.id ? createdTask : task)),
+      );
+      setExpandedTaskId(createdTask.id);
+
+      if (origin === 'home' && activePanelRef.current === 'home') {
+        setHomeRunTask(createdTask);
+        setHomePlanSteps(getDisplayPlanSteps(createdTask.planSteps));
+        setPlanState('ready');
+      }
+
+      if (origin === 'tasks') {
+        setTaskInput('');
+        setShowTaskComposer(false);
+      } else {
+        setHomeInput('');
+      }
+    } catch {
+      if (origin === 'home') {
+        setPlanState('error');
+        setHomeRunTask(null);
+        setHomePlanSteps([]);
+      }
+      flashWandState('error', ERROR_FLASH_MS);
+    } finally {
+      setIsPlanning(false);
+    }
+  }
+
+  function clearApprovalTimer(taskId) {
+    const timer = approvalTimersRef.current[taskId];
+
+    if (timer) {
+      window.clearTimeout(timer);
+      delete approvalTimersRef.current[taskId];
+    }
+  }
+
+  function scheduleApproval(email, taskId) {
+    clearApprovalTimer(taskId);
+
+    approvalTimersRef.current[taskId] = window.setTimeout(() => {
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: 'waiting',
+                updatedAt: Date.now(),
+              }
+            : task,
+        ),
+      );
 
       setApprovals((current) => {
-        if (current.some((item) => item.taskId === taskId)) {
+        if (current.some((approval) => approval.taskId === taskId)) {
           return current;
         }
 
-        return [approval, ...current];
+        return [buildApprovalFromEmail(email, taskId), ...current];
       });
 
-      addActivityItem('pending', 'Approval queued', `Reply to ${email.senderName} is ready for review.`);
-      pushNotification({
-        title: 'Approval needed',
-        description: `${email.senderName} is ready for review.`,
-        tone: 'warning',
-      });
-    }, email.approvalDelayMs ?? 2200);
+      addActivityItem('pending', 'Approval queued', `Reply to ${email.senderName} is ready.`);
+      delete approvalTimersRef.current[taskId];
+    }, email.approvalDelayMs);
   }
 
   async function handleIncomingEmail(email) {
@@ -1825,31 +2932,30 @@ function App() {
     processedEmailIdsRef.current.add(normalisedEmail.id);
     persistProcessedEmailIds(processedEmailIdsRef.current);
 
-    const fallbackTask = buildTaskFromEmail(normalisedEmail);
-    const createdTask = await createTaskWithAgentPlan(
-      `Reply to ${normalisedEmail.senderName} about ${normalisedEmail.subject}`,
-      {
-        baseTask: fallbackTask,
-        request: fallbackTask.request,
-        sourceEmail: {
-          senderName: normalisedEmail.senderName,
-          senderEmail: normalisedEmail.senderEmail,
-          subject: normalisedEmail.subject,
-          body: normalisedEmail.body,
-        },
-        draftPreview: fallbackTask.draftPreview,
-        allowFallback: true,
-      },
-    );
+    flick();
+    pulseProcessing();
+    setIsPlanning(true);
 
-    setTasks((current) => [createdTask, ...current]);
-    addActivityItem('draft', 'Inbox email triaged', `Task created from ${normalisedEmail.senderName}.`);
-    pushNotification({
-      title: `New email from ${normalisedEmail.senderName}`,
-      description: normalisedEmail.subject,
-      tone: 'accent',
-    });
-    scheduleApprovalForEmail(normalisedEmail, createdTask.id);
+    try {
+      const fallbackTask = buildTaskFromEmail(normalisedEmail);
+      const task = await createTaskWithAgentPlan(
+        `Reply to ${normalisedEmail.senderName} about ${normalisedEmail.subject}`,
+        {
+          baseTask: fallbackTask,
+          sourceEmail: fallbackTask.sourceEmail,
+        },
+      );
+
+      setTasks((current) => [task, ...current]);
+      setExpandedTaskId(task.id);
+      addActivityItem('draft', 'Inbox task created', normalisedEmail.subject);
+
+      if (normalisedEmail.requiresApproval) {
+        scheduleApproval(normalisedEmail, task.id);
+      }
+    } finally {
+      setIsPlanning(false);
+    }
   }
 
   function reconcileInboxSnapshot(inboxEmails) {
@@ -1861,903 +2967,606 @@ function App() {
       .map((email) => normaliseIncomingEmail(email))
       .filter(Boolean)
       .filter((email) => email.status !== 'actioned');
-    const activeEmailIds = new Set(activeEmails.map((email) => email.id));
+    const activeIds = new Set(activeEmails.map((email) => email.id));
 
     processedEmailIdsRef.current.forEach((emailId) => {
-      if (!activeEmailIds.has(emailId)) {
+      if (!activeIds.has(emailId)) {
         processedEmailIdsRef.current.delete(emailId);
       }
     });
+
     persistProcessedEmailIds(processedEmailIdsRef.current);
 
-    const removedEmailTasks = tasksRef.current.filter(
-      (task) => task.sourceEmailId && !activeEmailIds.has(task.sourceEmailId),
-    );
-
-    if (removedEmailTasks.length) {
-      const removedTaskIds = new Set(removedEmailTasks.map((task) => task.id));
-
-      removedEmailTasks.forEach((task) => {
-        clearPendingApproval(task.id);
-      });
-
-      setTasks((current) => current.filter((task) => !removedTaskIds.has(task.id)));
-      setApprovals((current) => current.filter((approval) => !removedTaskIds.has(approval.taskId)));
-
-      if (homeRunRef.current && removedTaskIds.has(homeRunRef.current.taskId)) {
-        clearTaskPlanningTimers();
-        setIsTaskPlanning(false);
-        setHomeRun(null);
-      }
-    }
-
-    activeEmails.forEach((activeEmail) => {
-      void handleIncomingEmail(activeEmail);
+    activeEmails.forEach((email) => {
+      void handleIncomingEmail(email);
     });
   }
 
-  useEffect(() => {
+  async function saveReplyToneEditCount(nextCount) {
     if (!sessionToken) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    let isSyncing = false;
-
-    async function syncInbox() {
-      if (cancelled || isSyncing) {
-        return;
-      }
-
-      isSyncing = true;
-
-      try {
-        const response = await fetchProtected('/api/emails');
-
-        if (response.status === 401) {
-          clearGoogleSession({ notify: true });
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(`Failed with status ${response.status}`);
-        }
-
-        const inboxEmails = await response.json();
-
-        if (!cancelled) {
-          reconcileInboxSnapshot(inboxEmails);
-        }
-      } catch (error) {
-        console.error('Could not hydrate inbox emails.', error);
-      } finally {
-        isSyncing = false;
-      }
-    }
-
-    function handleVisibilityChange() {
-      if (!document.hidden) {
-        void syncInbox();
-      }
-    }
-
-    void syncInbox();
-
-    const intervalId = window.setInterval(syncInbox, INBOX_SYNC_INTERVAL_MS);
-    window.addEventListener('focus', syncInbox);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', syncInbox);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [sessionToken]);
-
-  useEffect(() => {
-    if (!sessionToken) {
-      setRecentEmails([]);
-      setIsRecentEmailsLoading(false);
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    async function loadRecentEmails() {
-      setIsRecentEmailsLoading(true);
-
-      try {
-        const response = await fetchProtected('/gmail/recent');
-
-        if (response.status === 401) {
-          clearGoogleSession({ notify: true });
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(`Failed with status ${response.status}`);
-        }
-
-        const payload = await response.json();
-
-        if (cancelled) {
-          return;
-        }
-
-        setRecentEmails(Array.isArray(payload) ? payload : []);
-        setRecentEmailsMessage('');
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setRecentEmails([]);
-        setRecentEmailsMessage('Could not load recent Gmail activity right now.');
-      } finally {
-        if (!cancelled) {
-          setIsRecentEmailsLoading(false);
-        }
-      }
-    }
-
-    void loadRecentEmails();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionToken]);
-
-  async function handleTaskPromptSubmit(input) {
-    const value = input.trim();
-
-    if (!value || isTaskPlanning) {
-      return false;
-    }
-
-    setIsTaskPlanning(true);
-
-    try {
-      const task = await createTaskWithAgentPlan(value);
-      setTasks((current) => [task, ...current]);
-      runTaskSequence(task);
-    } catch (error) {
-      clearTaskPlanningTimers();
-      setHomeRun(null);
-      setIsTaskPlanning(false);
-      pushNotification({
-        title: 'Planning failed',
-        description:
-          error instanceof Error ? error.message : 'The task could not be planned right now.',
-        tone: 'danger',
-      });
-      return false;
-    }
-
-    return true;
-  }
-
-  async function submitComposer() {
-    const didSubmit = await handleTaskPromptSubmit(composerText);
-
-    if (didSubmit) {
-      setComposerText('');
-    }
-  }
-
-  function focusComposerWithText(value) {
-    setComposerText(value);
-
-    window.requestAnimationFrame(() => {
-      const textarea = composerRef.current;
-
-      if (!textarea) {
-        return;
-      }
-
-      textarea.focus();
-      const placeholderStart = value.indexOf('[');
-      const placeholderEnd = value.indexOf(']');
-
-      if (placeholderStart !== -1 && placeholderEnd > placeholderStart) {
-        textarea.setSelectionRange(placeholderStart + 1, placeholderEnd);
-        return;
-      }
-
-      textarea.setSelectionRange(value.length, value.length);
-    });
-  }
-
-  function handleQuickAction(action) {
-    focusComposerWithText(ACTION_TEMPLATES[action] ?? action);
-  }
-
-  function handleTaskQuestion(taskId, answer) {
-    setTasks((current) =>
-      current.map((item) =>
-        item.id === taskId
-          ? {
-              ...item,
-              updatedAt: Date.now(),
-              questionAnswer: answer,
-            }
-          : item,
-      ),
-    );
-
-    addActivityItem(
-      'draft',
-      'Clarification recorded',
-      answer === 'yes' ? 'Positive clarification captured.' : 'Negative clarification captured.',
-    );
-  }
-
-  function handleCancelTask(taskId) {
-    const task = tasksRef.current.find((item) => item.id === taskId);
-
-    if (!task || task.status === 'done') {
       return;
     }
 
-    clearPendingApproval(taskId);
-    setTasks((current) => current.filter((item) => item.id !== taskId));
-    setApprovals((current) => current.filter((item) => item.taskId !== taskId));
-    addActivityItem('pending', 'Task cancelled', task.name);
-    pushNotification({
-      title: 'Task cancelled',
-      description: task.name,
-      tone: 'danger',
-    });
+    try {
+      await fetchProtected('/api/memory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: MEMORY_KEYS.replyToneEdits,
+          value: String(nextCount),
+        }),
+      });
+    } catch {
+    }
   }
 
-  async function handleApprovalAction(approvalId, action, options = {}) {
-    const approval = approvals.find((item) => item.id === approvalId);
-    const feedback = String(options.feedback ?? '').trim();
-
-    if (!approval) {
-      return false;
+  async function handleApproveApproval(approval) {
+    if (removingApprovals[approval.id]) {
+      return;
     }
 
-    if (action === 'approve') {
-      clearPendingApproval(approval.taskId);
-      setApprovals((current) => current.filter((item) => item.id !== approvalId));
+    setRemovingApprovals((current) => ({
+      ...current,
+      [approval.id]: 'approve',
+    }));
+    pulseProcessing(700);
+
+    try {
+      if (approval.sourceEmailId && sessionToken) {
+        const response = await fetchProtected(`/api/emails/${approval.sourceEmailId}/action`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'send',
+            reply: approval.agentResponse,
+          }),
+        });
+
+        if (response.status !== 401 && !response.ok) {
+          throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+        }
+      }
+
+      window.setTimeout(() => {
+        setApprovals((current) => current.filter((item) => item.id !== approval.id));
+        setRemovingApprovals((current) => {
+          const next = { ...current };
+          delete next[approval.id];
+          return next;
+        });
+      }, APPROVAL_REMOVE_MS);
+
       setTasks((current) =>
-        current.map((item) =>
-          item.id === approval.taskId
+        current.map((task) =>
+          task.id === approval.taskId
             ? {
-                ...item,
+                ...task,
                 status: 'done',
                 updatedAt: Date.now(),
-                reviewFeedback: null,
               }
-            : item,
+            : task,
         ),
       );
-      setResolvedCount((current) => current + 1);
-      addActivityItem('resolved', 'Approval sent', `${approval.senderName} was approved.`);
-      pushNotification({
-        title: 'Approval sent',
-        description: approval.senderName,
-        tone: 'success',
+      addActivityItem('approved', 'Approved', approval.subject);
+      flashWandState('success', APPROVAL_FLASH_MS);
+    } catch {
+      setRemovingApprovals((current) => {
+        const next = { ...current };
+        delete next[approval.id];
+        return next;
       });
-      return true;
+      flashWandState('error', ERROR_FLASH_MS);
+    }
+  }
+
+  function handleRejectApproval(approval) {
+    if (removingApprovals[approval.id]) {
+      return;
     }
 
-    if (action === 'edit') {
-      if (!feedback) {
-        return false;
-      }
+    setRemovingApprovals((current) => ({
+      ...current,
+      [approval.id]: 'reject',
+    }));
 
-      const revisionPrompt = `Revise response for ${approval.senderName}`;
-      const linkedTask = tasksRef.current.find((item) => item.id === approval.taskId);
-      const fallbackRequest =
-        linkedTask?.request ??
-        `From: ${approval.sourceEmail.senderName} <${approval.sourceEmail.senderEmail}>\nSubject: ${approval.sourceEmail.subject}\n\n${approval.sourceEmail.body}`;
-      const fallbackTask = {
-        ...(linkedTask ?? buildTaskFromPrompt(revisionPrompt)),
-        name: normaliseTaskTitle(revisionPrompt),
-        request: fallbackRequest,
-        status: 'working',
-        updatedAt: Date.now(),
-        reviewFeedback: feedback,
-        draftPreview: approval.agentResponse
-          ? {
-              label: 'Revising email',
-              text: approval.agentResponse,
-            }
-          : linkedTask?.draftPreview ?? null,
-        source: approval.sourceEmail ? 'email' : linkedTask?.source ?? 'manual',
-        sourceEmailId: approval.sourceEmailId ?? linkedTask?.sourceEmailId ?? null,
-        sourceEmail: approval.sourceEmail ?? linkedTask?.sourceEmail ?? null,
-      };
-
-      setTasks((current) => {
-        if (linkedTask) {
-          return current.map((item) => (item.id === linkedTask.id ? fallbackTask : item));
-        }
-
-        return [fallbackTask, ...current];
+    window.setTimeout(() => {
+      setApprovals((current) => current.filter((item) => item.id !== approval.id));
+      setRemovingApprovals((current) => {
+        const next = { ...current };
+        delete next[approval.id];
+        return next;
       });
+    }, APPROVAL_REMOVE_MS);
 
-      clearPendingApproval(approval.taskId);
-      setApprovals((current) => current.filter((item) => item.id !== approvalId));
-      setExpandedTaskId(fallbackTask.id);
-      addActivityItem('draft', 'Approval sent back for edit', feedback);
-      pushNotification({
-        title: 'Returned for edits',
-        description: approval.senderName,
-        tone: 'accent',
-      });
-
-      try {
-        const plannedTask = await createTaskWithAgentPlan(revisionPrompt, {
-          baseTask: fallbackTask,
-          request: fallbackRequest,
-          sourceEmail: approval.sourceEmail ?? null,
-          reviewFeedback: feedback,
-          draftPreview: fallbackTask.draftPreview,
-        });
-
-        setTasks((current) =>
-          current.map((item) => (item.id === fallbackTask.id ? plannedTask : item)),
-        );
-      } catch (error) {
-        console.error('Could not rebuild revision task.', error);
-        pushNotification({
-          title: 'Revision planning failed',
-          description:
-            error instanceof Error
-              ? error.message
-              : 'The revised draft could not be generated right now.',
-          tone: 'danger',
-        });
-      }
-
-      return true;
-    }
-
-    clearPendingApproval(approval.taskId);
-    setApprovals((current) => current.filter((item) => item.id !== approvalId));
     setTasks((current) =>
+      current.map((task) =>
+        task.id === approval.taskId
+          ? {
+              ...task,
+              status: 'done',
+              updatedAt: Date.now(),
+            }
+          : task,
+      ),
+    );
+
+    addActivityItem('rejected', 'Rejected', approval.subject);
+    flashWandState('error', APPROVAL_FLASH_MS);
+  }
+
+  function handleSaveApprovalEdit(approval, nextText) {
+    const trimmed = nextText.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    setApprovals((current) =>
       current.map((item) =>
-        item.id === approval.taskId
+        item.id === approval.id
           ? {
               ...item,
-              status: 'waiting',
-              updatedAt: Date.now(),
-              reviewFeedback: null,
+              agentResponse: trimmed,
+              status: 'edited',
             }
           : item,
       ),
     );
-    addActivityItem('pending', 'Approval rejected', approval.senderName);
-    pushNotification({
-      title: 'Approval rejected',
-      description: approval.senderName,
-      tone: 'danger',
+
+    setMemoryProfile((current) => {
+      const currentCount = parseInt(current[MEMORY_KEYS.replyToneEdits] || '0', 10) || 0;
+      const nextCount = currentCount + 1;
+      void saveReplyToneEditCount(nextCount);
+
+      return {
+        ...current,
+        [MEMORY_KEYS.replyToneEdits]: String(nextCount),
+      };
     });
 
-    return true;
+    addActivityItem('draft', 'Approval updated', approval.subject);
   }
 
-  function jumpToSection(id) {
-    document.getElementById(id)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  }
+  function handleTaskQuestion(taskId, answer) {
+    const answerSummary =
+      answer === 'yes' || answer === 'no' ? `Answered ${answer}.` : `Answered: ${answer}`;
 
-  function handleMemoryFieldChange(key, value) {
-    setMemoryDraft((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  function handleMemoryStartEdit() {
-    setMemoryDraft(mapProfileToDraft(memoryProfile));
-    setMemoryMessage('');
-    setIsMemoryEditing(true);
-  }
-
-  function handleMemoryCancelEdit() {
-    setMemoryDraft(mapProfileToDraft(memoryProfile));
-    setMemoryMessage('');
-    setIsMemoryEditing(false);
-  }
-
-  async function handleMemorySubmit(event) {
-    event.preventDefault();
-    setIsMemorySaving(true);
-    setMemoryMessage('');
-
-    try {
-      await Promise.all(
-        MEMORY_FIELDS.map((field) =>
-          fetchProtected('/api/memory', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              key: field.key,
-              value: memoryDraft[field.key].trim(),
-            }),
-          }).then((response) => {
-            if (response.status === 401) {
-              clearGoogleSession({ notify: true });
-              throw new Error('Session expired');
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              questionAnswer: answer,
+              updatedAt: Date.now(),
             }
+          : task,
+      ),
+    );
 
-            if (!response.ok) {
-              throw new Error(`Failed with status ${response.status}`);
+    addActivityItem('pending', 'Clarification recorded', answerSummary);
+  }
+
+  function handleTaskNoteSubmit(taskId, note) {
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              updatedAt: Date.now(),
+              notes: [...task.notes, { id: createId('note'), text: note, createdAt: Date.now() }],
             }
-          }),
-        ),
-      );
+          : task,
+      ),
+    );
 
-      const nextProfile = MEMORY_FIELDS.reduce((result, field) => {
-        const value = memoryDraft[field.key].trim();
+    addActivityItem('draft', 'Task note added', note);
+  }
 
-        if (value) {
-          result[field.key] = value;
+  function handleTaskDraftSave(taskId, nextText) {
+    const trimmed = nextText.trim();
+    const taskName = tasks.find((task) => task.id === taskId)?.name ?? 'Draft';
+
+    if (!trimmed) {
+      return;
+    }
+
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              draftContent: trimmed,
+              draftPreview: task.draftPreview
+                ? { ...task.draftPreview, text: trimmed }
+                : { label: 'Draft', text: trimmed },
+              updatedAt: Date.now(),
+            }
+          : task,
+      ),
+    );
+
+    let updatedApproval = false;
+    setApprovals((current) =>
+      current.map((approval) => {
+        if (approval.taskId !== taskId) {
+          return approval;
         }
 
-        return result;
-      }, {});
+        updatedApproval = true;
+        return {
+          ...approval,
+          agentResponse: trimmed,
+          status: 'edited',
+        };
+      }),
+    );
 
-      setMemoryProfile(nextProfile);
-      setMemoryDraft(mapProfileToDraft(nextProfile));
-      setIsMemoryEditing(false);
-      setMemoryMessage('Memory saved. New drafts will use this context.');
-      addActivityItem('resolved', 'Memory updated', 'Business context was saved.');
-      pushNotification({
-        title: 'Memory saved',
-        description: 'Business context is updated.',
-        tone: 'success',
+    if (updatedApproval) {
+      setMemoryProfile((current) => {
+        const currentCount = parseInt(current[MEMORY_KEYS.replyToneEdits] || '0', 10) || 0;
+        const nextCount = currentCount + 1;
+        void saveReplyToneEditCount(nextCount);
+
+        return {
+          ...current,
+          [MEMORY_KEYS.replyToneEdits]: String(nextCount),
+        };
       });
-    } catch (error) {
-      setMemoryMessage('Could not save memory right now. Please try again.');
-    } finally {
-      setIsMemorySaving(false);
     }
+
+    addActivityItem('draft', 'Draft updated', taskName);
   }
 
-  const sortedTasks = useMemo(
-    () => [...tasks].sort((a, b) => b.updatedAt - a.updatedAt),
-    [tasks],
-  );
-  const visibleTasks = useMemo(() => {
-    if (taskFilter === 'all') {
-      return sortedTasks;
+  async function handleTaskDraftApprove(task) {
+    const matchingApproval = approvals.find((approval) => approval.taskId === task.id);
+
+    if (matchingApproval) {
+      await handleApproveApproval(matchingApproval);
+      return;
     }
 
-    if (taskFilter === 'active') {
-      return sortedTasks.filter((task) => task.status === 'working');
+    setTasks((current) =>
+      current.map((item) =>
+        item.id === task.id
+          ? {
+              ...item,
+              status: 'done',
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    );
+    addActivityItem('approved', 'Approved', task.name);
+    flashWandState('success', APPROVAL_FLASH_MS);
+  }
+
+  function handleCancelTask(task) {
+    if (!task || removingTasks[task.id]) {
+      return;
     }
 
-    return sortedTasks.filter((task) => task.status === taskFilter);
-  }, [sortedTasks, taskFilter]);
-  const sortedApprovals = useMemo(
-    () => [...approvals].sort((a, b) => b.createdAt - a.createdAt),
-    [approvals],
-  );
-  const activeTaskCount = tasks.filter((task) => task.status !== 'done').length;
-  const doneTaskCount = tasks.filter((task) => task.status === 'done').length;
-  const businessName = trimToNull(memoryProfile.business_name) ?? 'Olivander';
-  const firstName = getFirstName(memoryProfile.owner_name);
-  const approvalsByTaskId = useMemo(
-    () => new Map(sortedApprovals.map((approval) => [approval.taskId, approval])),
-    [sortedApprovals],
-  );
+    const matchingApproval = approvals.find((approval) => approval.taskId === task.id);
+
+    if (matchingApproval && removingApprovals[matchingApproval.id]) {
+      return;
+    }
+
+    clearApprovalTimer(task.id);
+    setRemovingTasks((current) => ({
+      ...current,
+      [task.id]: true,
+    }));
+
+    if (matchingApproval) {
+      setRemovingApprovals((current) => ({
+        ...current,
+        [matchingApproval.id]: 'reject',
+      }));
+    }
+
+    if (expandedTaskId === task.id) {
+      setExpandedTaskId(null);
+    }
+
+    addActivityItem('rejected', 'Cancelled', task.name);
+    flashWandState('error', APPROVAL_FLASH_MS);
+
+    window.setTimeout(() => {
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      setRemovingTasks((current) => {
+        const next = { ...current };
+        delete next[task.id];
+        return next;
+      });
+
+      if (matchingApproval) {
+        setApprovals((current) => current.filter((item) => item.id !== matchingApproval.id));
+        setRemovingApprovals((current) => {
+          const next = { ...current };
+          delete next[matchingApproval.id];
+          return next;
+        });
+      }
+
+      if (homeRunTask?.id === task.id) {
+        setPlanState(null);
+        setHomePlanSteps([]);
+        setHomeRunTask(null);
+      }
+    }, APPROVAL_REMOVE_MS);
+  }
+
+  function handleApproveHomePlan(task) {
+    if (!task) {
+      return;
+    }
+
+    setExpandedTaskId(task.id);
+    setPlanState(null);
+    setHomePlanSteps([]);
+    setHomeRunTask(null);
+    addActivityItem('approved', 'Plan approved', task.name);
+    flashWandState('success', APPROVAL_FLASH_MS);
+    requestPanel('tasks');
+  }
+
+  function dismissHomePlan() {
+    setPlanState(null);
+    setHomePlanSteps([]);
+    setHomeRunTask(null);
+  }
+
+  async function handleLogout() {
+    if (googleConnected) {
+      await handleGoogleDisconnect();
+      return;
+    }
+
+    clearSessionState();
+    closeProfileMenu();
+    setSettingsSection('connections');
+    requestPanel('home');
+  }
+
+  function handleThemeToggle() {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    if (themeSwitchTimerRef.current) {
+      window.clearTimeout(themeSwitchTimerRef.current);
+    }
+
+    setIsThemeSwitching(true);
+    setTheme(nextTheme);
+
+    themeSwitchTimerRef.current = window.setTimeout(() => {
+      setIsThemeSwitching(false);
+      themeSwitchTimerRef.current = null;
+    }, THEME_SWITCH_MS);
+  }
+
+  const sidebarItems = [
+    { id: 'home', label: 'Home', icon: <HouseIcon /> },
+    { id: 'tasks', label: 'Tasks', icon: <TaskListIcon />, badge: activeTaskCount || null },
+    {
+      id: 'approvals',
+      label: 'Approvals',
+      icon: <CheckCircleIcon />,
+      badge: sortedApprovals.length || null,
+    },
+    { id: 'activity', label: 'Activity', icon: <LinesIcon /> },
+  ];
+  const visibleSidebarItems = isSettingsPanel
+    ? [
+        {
+          id: 'settings-back',
+          label: 'Back',
+          icon: <ArrowLeftIcon />,
+          onClick: handleSettingsBack,
+          className: 'sidebar__nav-item--back',
+        },
+        ...SETTINGS_SECTIONS.map((item) => ({
+          ...item,
+          onClick: () => setSettingsSection(item.id),
+          isActive: settingsSection === item.id,
+        })),
+      ]
+    : sidebarItems.map((item) => ({
+        ...item,
+        onClick: () => requestPanel(item.id),
+        isActive: activePanel === item.id,
+      }));
+  const currentTitle = isSettingsPanel ? 'Settings' : PANEL_TITLES[activePanel] ?? 'Home';
 
   return (
-    <>
-      <ToastStack notifications={notifications} onDismiss={dismissNotification} />
+    <div className={`app-shell ${isThemeSwitching ? 'is-theme-switching' : ''}`.trim()}>
+      {profileMenuState ? (
+        <button
+          type="button"
+          className="menu-overlay"
+          aria-label="Close menu"
+          onClick={closeProfileMenu}
+        />
+      ) : null}
 
-      <div className="dashboard-shell">
-        <div className="dashboard-aurora dashboard-aurora--one" />
-        <div className="dashboard-aurora dashboard-aurora--two" />
+      <aside className="sidebar">
+        <button type="button" className="sidebar__logo-row" onClick={handleLogoClick}>
+          <OlivanderWand />
+          <div className="wordmark" aria-label="Olivander">
+            <span className="wordmark__o">O</span>
+            <span className="wordmark__rest">livander</span>
+          </div>
+        </button>
 
-        <main className="dashboard">
-          <header className="dashboard-header" style={{ '--delay': '0ms' }}>
-            <div className="brand-lockup">
-              <div className="brand-mark">
-                <SparkIcon />
-              </div>
-              <div>
-                <div className="section-eyebrow">Dashboard</div>
-                <h1 className="brand-title">{businessName}</h1>
-              </div>
-            </div>
+        <nav
+          className={`sidebar__nav ${isSettingsPanel ? 'sidebar__nav--settings' : ''}`.trim()}
+          aria-label={isSettingsPanel ? 'Settings sections' : 'Primary'}
+        >
+          {visibleSidebarItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`sidebar__nav-item ${item.className ?? ''} ${
+                item.isActive ? 'is-active' : ''
+              }`.trim()}
+              onClick={item.onClick}
+            >
+              <span className="sidebar__nav-icon">{item.icon}</span>
+              <span className="sidebar__nav-label">{item.label}</span>
+              {item.badge ? <span className="sidebar__nav-badge">{item.badge}</span> : null}
+            </button>
+          ))}
+        </nav>
 
-            <div className="dashboard-header__actions">
-              <nav className="top-nav" aria-label="Dashboard sections">
-                {[
-                  ['command', 'Command'],
-                  ['queue', 'Queue'],
-                  ['approvals', 'Approvals'],
-                  ['memory', 'Memory'],
-                  ['activity', 'Activity'],
-                ].map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className="top-nav__button"
-                    onClick={() => jumpToSection(id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
+        <div className="sidebar__divider" />
 
+        <div className="sidebar__footer">
+          {profileMenuState ? (
+            <div className={`profile-menu ${profileMenuState === 'open' ? 'is-open' : 'is-closing'}`}>
               <button
                 type="button"
-                className="icon-button"
-                aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-                onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+                className="profile-menu__item"
+                onClick={() => openSettings('connections')}
               >
-                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+                <GearIcon />
+                <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                className="profile-menu__item profile-menu__item--danger"
+                onClick={() => void handleLogout()}
+              >
+                <LogoutIcon />
+                <span>Log out</span>
               </button>
             </div>
-          </header>
-
-          <section className="hero-layout">
-            <article
-              className="dashboard-card hero-card"
-              id="command"
-              style={{ '--delay': '80ms' }}
-            >
-              <div className="hero-card__meta">
-                <span>{formatDashboardDate(currentTime)}</span>
-                <span>{formatDashboardTime(currentTime)}</span>
-              </div>
-              <h2 className="hero-card__title">
-                {getGreetingForHour(currentTime.getHours())}
-                {firstName ? `, ${firstName}` : ''}.
-              </h2>
-              <p className="hero-card__copy">
-                Queue work, review drafts, and keep the operating context tight from one surface.
-              </p>
-
-              <div className="quick-action-row">
-                {QUICK_ACTIONS.map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    className="quick-action-chip"
-                    disabled={isTaskPlanning}
-                    onClick={() => handleQuickAction(action)}
-                  >
-                    {action}
-                  </button>
-                ))}
-              </div>
-
-              <form
-                className="composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submitComposer();
-                }}
-              >
-                <label className="visually-hidden" htmlFor="dashboard-composer">
-                  What should Olivander do next?
-                </label>
-                <textarea
-                  id="dashboard-composer"
-                  ref={composerRef}
-                  className="composer__input"
-                  rows="4"
-                  value={composerText}
-                  onChange={(event) => setComposerText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      void submitComposer();
-                    }
-                  }}
-                  placeholder="What needs doing?"
-                />
-                <div className="composer__footer">
-                  <div className="composer__hint">
-                    Press Enter to queue. Shift+Enter adds a line break.
-                  </div>
-                  <button
-                    type="submit"
-                    className="primary-button"
-                    disabled={!composerText.trim() || isTaskPlanning}
-                  >
-                    {isTaskPlanning ? 'Planning...' : 'Queue task'}
-                    <ArrowIcon />
-                  </button>
-                </div>
-              </form>
-            </article>
-
-            <div className="hero-aside">
-              <div className="metric-grid">
-                <MetricCard
-                  label="Approvals"
-                  value={sortedApprovals.length}
-                  detail={`${sortedApprovals.length} waiting`}
-                  tone="accent"
-                  delay="120ms"
-                />
-                <MetricCard
-                  label="Active tasks"
-                  value={activeTaskCount}
-                  detail={`${tasks.filter((task) => task.status === 'working').length} working`}
-                  tone="ink"
-                  delay="160ms"
-                />
-                <MetricCard
-                  label="Resolved"
-                  value={resolvedCount}
-                  detail={`${doneTaskCount} done in queue`}
-                  tone="success"
-                  delay="200ms"
-                />
-              </div>
-
-              <article className="dashboard-card connection-card" style={{ '--delay': '240ms' }}>
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Connections</div>
-                    <h2 className="section-title">Google Workspace</h2>
-                  </div>
-                  <span className={`status-pill is-${isGoogleConnected ? 'success' : 'warning'}`}>
-                    {isGoogleConnected ? 'Connected' : 'Not connected'}
-                  </span>
-                </div>
-                <p className="section-copy">
-                  Gmail tokens are now stored through the backend session pipeline, and the dashboard reads live inbox activity from Google after connect.
-                </p>
-                <div className="connection-card__footer">
-                  <div className="connection-card__status">
-                    <LinkIcon />
-                    <span>
-                      {isGoogleConnected
-                        ? 'Session is active and ready for Gmail reads'
-                        : 'Connect Google to enable Gmail access'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className={isGoogleConnected ? 'secondary-button' : 'primary-button'}
-                    disabled={isGoogleBusy}
-                    onClick={isGoogleConnected ? handleGoogleDisconnect : handleGoogleConnect}
-                  >
-                    {isGoogleBusy
-                      ? isGoogleConnected
-                        ? 'Disconnecting...'
-                        : 'Connecting...'
-                      : isGoogleConnected
-                        ? 'Disconnect'
-                        : 'Connect Google'}
-                  </button>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          {homeRun ? (
-            <section className="run-section">
-              <article className="dashboard-card run-card" style={{ '--delay': '280ms' }}>
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Current run</div>
-                    <h2 className="section-title">{homeRun.taskName}</h2>
-                  </div>
-                  <span className={`status-pill is-${homeRun.isComplete ? 'success' : 'accent'}`}>
-                    {homeRun.status}
-                  </span>
-                </div>
-
-                <div className={`run-card__grid ${homeRun.draftLabel ? 'has-draft' : ''}`}>
-                  <div className="step-list">
-                    {homeRun.steps.map((step, index) => {
-                      const stepState = getPlanStepState(
-                        { id: homeRun.taskId, status: homeRun.isComplete ? 'done' : 'working' },
-                        homeRun,
-                        index,
-                      );
-
-                      return (
-                        <div key={step.id} className={`step-list__item is-${stepState}`}>
-                          <span className={`step-list__marker is-${stepState}`} aria-hidden="true" />
-                          <div>
-                            <div className="step-list__title">{step.title}</div>
-                            <div className="step-list__detail">{step.detail}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {homeRun.draftLabel ? (
-                    <div>
-                      <div className="section-eyebrow">{homeRun.draftLabel}</div>
-                      <pre className="code-panel">
-                        {homeRun.draftText || homeRun.draftTarget}
-                        {!homeRun.isComplete && homeRun.draftTarget ? (
-                          <span className="typing-cursor" aria-hidden="true" />
-                        ) : null}
-                      </pre>
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            </section>
           ) : null}
 
-          <section className="content-grid">
-            <div className="content-main">
-              <article className="dashboard-card section-card" id="queue" style={{ '--delay': '300ms' }}>
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Queue</div>
-                    <h2 className="section-title">Tasks</h2>
-                  </div>
-                  <div className="filter-row">
-                    {[
-                      ['all', 'All'],
-                      ['active', 'Working'],
-                      ['waiting', 'Waiting'],
-                      ['done', 'Done'],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={`filter-chip ${taskFilter === id ? 'is-active' : ''}`}
-                        onClick={() => setTaskFilter(id)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          <button
+            type="button"
+            className="profile-trigger"
+            aria-expanded={profileMenuState === 'open'}
+            onClick={toggleProfileMenu}
+          >
+            <span className="profile-trigger__avatar">
+              {businessName
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((part) => part.charAt(0).toUpperCase())
+                .join('') || 'OT'}
+            </span>
+            <span className="profile-trigger__copy">
+              <span className="profile-trigger__name">{businessName}</span>
+              <span className="profile-trigger__plan">{profileMeta}</span>
+            </span>
+          </button>
+        </div>
+      </aside>
 
-                {visibleTasks.length ? (
-                  <div className="task-list">
-                    {visibleTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        activeRun={homeRun}
-                        linkedApproval={approvalsByTaskId.get(task.id) ?? null}
-                        isExpanded={expandedTaskId === task.id}
-                        onToggle={() =>
-                          setExpandedTaskId((current) => (current === task.id ? null : task.id))
-                        }
-                        onTaskQuestion={handleTaskQuestion}
-                        onCancel={handleCancelTask}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">No tasks in this view yet.</div>
-                )}
-              </article>
+      <main className="main-shell">
+        <header className="top-bar">
+          <div className="top-bar__inner">
+            <div className="top-bar__title">{currentTitle}</div>
+          </div>
+        </header>
 
-              <article
-                className="dashboard-card section-card"
-                id="approvals"
-                style={{ '--delay': '320ms' }}
-              >
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Approvals</div>
-                    <h2 className="section-title">Needs review</h2>
-                  </div>
-                  <div className="approval-count">
-                    {sortedApprovals.length === 1
-                      ? '1 draft waiting'
-                      : `${sortedApprovals.length} drafts waiting`}
-                  </div>
-                </div>
-
-                {sortedApprovals.length ? (
-                  <div className="approval-list">
-                    {sortedApprovals.map((approval) => (
-                      <ApprovalCard
-                        key={approval.id}
-                        approval={approval}
-                        onApprovalAction={handleApprovalAction}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">No pending approvals right now.</div>
-                )}
-              </article>
-            </div>
-
-            <div className="content-side">
-              <MemoryCard
-                profile={memoryProfile}
-                draft={memoryDraft}
-                isLoading={isMemoryLoading}
-                isEditing={isMemoryEditing}
-                isSaving={isMemorySaving}
-                message={memoryMessage}
-                onStartEdit={handleMemoryStartEdit}
-                onCancelEdit={handleMemoryCancelEdit}
-                onFieldChange={handleMemoryFieldChange}
-                onSubmit={handleMemorySubmit}
+        <div className="panel-scroll">
+          <div ref={panelFrameRef} className="panel-frame">
+            {activePanel === 'home' ? (
+              <HomePanel
+                currentTime={currentTime}
+                greetingName={greetingName}
+                homeInput={homeInput}
+                onHomeInputChange={setHomeInput}
+                onHomeSubmit={(event) => {
+                  event.preventDefault();
+                  void submitInstruction(homeInput, 'home');
+                }}
+                onChipClick={setHomeInput}
+                onStatClick={requestPanel}
+                awaitingApprovalCount={sortedApprovals.length}
+                activeTaskCount={activeTaskCount}
+                resolvedThisWeekCount={resolvedThisWeekCount}
+                planState={planState}
+                planSteps={homePlanSteps}
+                onDismissPlan={dismissHomePlan}
+                onApprovePlan={() => handleApproveHomePlan(homeRunTask)}
               />
+            ) : null}
 
-              <article
-                className="dashboard-card section-card"
-                id="activity"
-                style={{ '--delay': '360ms' }}
-              >
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Recent Activity</div>
-                    <h2 className="section-title">Inbox activity</h2>
-                  </div>
-                  <ActivityIcon />
-                </div>
+            {activePanel === 'tasks' ? (
+              <TasksPanel
+                taskInput={taskInput}
+                onTaskInputChange={setTaskInput}
+                onTaskSubmit={(event) => {
+                  event.preventDefault();
+                  void submitInstruction(taskInput, 'tasks');
+                }}
+                taskFilter={taskFilter}
+                onTaskFilterChange={setTaskFilter}
+                showTaskComposer={showTaskComposer}
+                onNewTaskClick={() => setShowTaskComposer((current) => !current)}
+                visibleTasks={visibleTasks}
+                removingTasks={removingTasks}
+                expandedTaskId={expandedTaskId}
+                onToggleTask={(taskId) =>
+                  setExpandedTaskId((current) => (current === taskId ? null : taskId))
+                }
+                onAnswerQuestion={handleTaskQuestion}
+                onNoteSubmit={handleTaskNoteSubmit}
+                onApproveDraft={(task) => void handleTaskDraftApprove(task)}
+                onCancelTask={handleCancelTask}
+                onSaveDraft={handleTaskDraftSave}
+              />
+            ) : null}
 
-                {isRecentEmailsLoading ? (
-                  <div className="empty-state">Loading recent Gmail activity...</div>
-                ) : recentEmails.length ? (
-                  <div className="activity-list">
-                    {recentEmails.slice(0, 8).map((email) => (
-                      <div key={email.id} className="activity-list__item">
-                        <div className="activity-marker is-accent">
-                          <MailIcon />
-                        </div>
-                        <div className="activity-list__copy">
-                          <div className="activity-list__row">
-                            <div className="activity-list__title">{email.subject || 'Untitled Email'}</div>
-                            <div className="activity-list__time">
-                              {email.date ? String(email.date) : 'Recent'}
-                            </div>
-                          </div>
-                          <div className="activity-list__description">
-                            <strong>{email.senderName || email.from_name || 'Unknown Sender'}</strong>
-                            {' · '}
-                            {email.snippet || email.body || 'No preview available.'}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    {recentEmailsMessage || 'No recent Gmail activity was returned.'}
-                  </div>
-                )}
-              </article>
+            {activePanel === 'approvals' ? (
+              <ApprovalsPanel
+                approvals={sortedApprovals}
+                removingApprovals={removingApprovals}
+                onApprove={(approval) => void handleApproveApproval(approval)}
+                onReject={handleRejectApproval}
+                onSaveEdit={handleSaveApprovalEdit}
+              />
+            ) : null}
 
-              <article className="dashboard-card section-card pulse-card" style={{ '--delay': '380ms' }}>
-                <div className="section-header">
-                  <div>
-                    <div className="section-eyebrow">Inbox pulse</div>
-                    <h2 className="section-title">Live intake</h2>
-                  </div>
-                  <MessageIcon />
-                </div>
-                <p className="section-copy">
-                  The queue polls the backend every 10 seconds with the stored `business_id`, and expired Google sessions are cleared automatically.
-                </p>
-                <div className="pulse-card__row">
-                  <div className="pulse-dot" />
-                  <span>{sessionToken ? 'Watching for new work' : 'Awaiting Google connection'}</span>
-                </div>
-              </article>
-            </div>
-          </section>
-        </main>
-      </div>
-    </>
+            {activePanel === 'activity' ? (
+              <ActivityPanel
+                activityFilter={activityFilter}
+                onActivityFilterChange={setActivityFilter}
+                activityItems={visibleActivity}
+                recentEmailsError={recentEmailsError}
+              />
+            ) : null}
+
+            {activePanel === 'settings' ? (
+              <SettingsPanel
+                activeSection={settingsSection}
+                googleConnected={googleConnected}
+                googleBusy={googleBusy}
+                onGoogleToggle={() =>
+                  googleConnected
+                    ? void handleGoogleDisconnect()
+                    : void handleGoogleConnect()
+                }
+                onThemeToggle={handleThemeToggle}
+                theme={theme}
+                profile={memoryProfile}
+                isMemoryLoading={isMemoryLoading}
+                memoryError={memoryError}
+              />
+            ) : null}
+          </div>
+        </div>
+      </main>
+    </div>
   );
+}
+
+function App() {
+  return <DashboardApp />;
 }
 
 export default App;

@@ -1,72 +1,44 @@
-import json
-import logging
-from typing import Any
+from groq_client import get_groq_client
 
-from gemini_client import get_gemini_client
+client = get_groq_client()
 
-logger = logging.getLogger("olivander.app")
-_client = get_gemini_client()
 _VALID_LABELS = {
     "booking_request",
     "invoice_query",
-    "reschedule",
     "general_reply",
+    "new_client_enquiry",
     "ignore",
 }
 
 
-def _fallback_classification(email: dict[str, Any]) -> str:
-    text = " ".join(
-        str(email.get(key, "")).lower() for key in ("subject", "snippet", "body")
-    )
-
-    if "invoice" in text or "payment" in text:
-        return "invoice_query"
-
-    if "reschedule" in text or "move" in text or "another time" in text:
-        return "reschedule"
-
-    if "book" in text or "availability" in text or "appointment" in text:
-        return "booking_request"
-
-    if "unsubscribe" in text or "newsletter" in text:
-        return "ignore"
-
-    return "general_reply"
-
-
-def classify_email(email: dict[str, Any], business_context: dict[str, Any] | None = None) -> str:
-    if _client is None:
-        return _fallback_classification(email)
-
+def classify_email(subject: str, body: str, sender: str) -> str:
     prompt = f"""
-You classify inbound business emails into exactly one label.
+You are an AI assistant for a New Zealand service business.
+Classify the following inbound email into exactly one category.
 
-Allowed labels:
-- booking_request
-- invoice_query
-- reschedule
-- general_reply
-- ignore
+Categories:
+- booking_request: customer wants to schedule, reschedule, or cancel an appointment
+- invoice_query: question about payment, pricing, quotes, or invoices
+- general_reply: needs a response but no specific workflow
+- new_client_enquiry: first contact from a new potential customer
+- ignore: automated email, spam, newsletter, or no response needed
 
-Business context:
-{json.dumps(business_context or {}, ensure_ascii=True)}
+If you are uncertain, choose general_reply.
 
 Email:
-{json.dumps(email, ensure_ascii=True)}
+From: {sender}
+Subject: {subject}
+Body: {body}
 
-Respond with JSON only in the format:
-{{"label":"general_reply"}}
-"""
+Reply with ONLY the category name. No explanation. No punctuation.
+""".strip()
 
-    try:
-        response_text = _client.generate_text(prompt, model="gemini-2.0-flash")
-        payload = json.loads(response_text)
-        label = str(payload.get("label", "")).strip()
-
-        if label in _VALID_LABELS:
-            return label
-    except Exception as error:
-        logger.error("Gemini classify error: %s", error, exc_info=True)
-
-    return _fallback_classification(email)
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        max_tokens=20,
+    )
+    result = (response.choices[0].message.content or "").strip().lower()
+    result = result.splitlines()[0].strip(" \n\r\t`\"'.,:;!?") if result else ""
+    return result if result in _VALID_LABELS else "general_reply"
