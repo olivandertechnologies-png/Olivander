@@ -55,6 +55,58 @@ def test_oauth_callback_rejects_invalid_state(monkeypatch) -> None:
     assert callback_response.json()["detail"] == "Invalid OAuth state."
 
 
+def test_auth_google_sets_origin_cookie(monkeypatch) -> None:
+    monkeypatch.setattr(google_auth, "store_oauth_state", lambda state: None)
+
+    response = client.get("/auth/google", headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 200
+    assert response.cookies.get(google_auth.OAUTH_ORIGIN_COOKIE, "").strip('"') == "http://localhost:5173"
+
+
+def test_oauth_callback_posts_back_to_origin_cookie(monkeypatch) -> None:
+    class FakeCredentials:
+        token = "access-token"
+        refresh_token = "refresh-token"
+        expiry = None
+
+    class FakeFlow:
+        credentials = FakeCredentials()
+
+        def fetch_token(self, authorization_response: str) -> None:
+            return None
+
+    monkeypatch.setattr(google_auth, "consume_oauth_state", lambda state: None)
+    monkeypatch.setattr(google_auth, "create_google_flow", lambda state=None: FakeFlow())
+    monkeypatch.setattr(
+        google_auth,
+        "fetch_google_userinfo",
+        lambda access_token: {
+            "email": "owner@example.com",
+            "name": "Test Business",
+            "given_name": "Ollie",
+        },
+    )
+    monkeypatch.setattr(
+        google_auth,
+        "upsert_business_tokens",
+        lambda **kwargs: {
+            "id": "business-123",
+            "contact_name": "Ollie",
+        },
+    )
+
+    response = client.get(
+        "/auth/google/callback",
+        params={"state": "valid-state", "code": "fake-code"},
+        cookies={google_auth.OAUTH_ORIGIN_COOKIE: "http://localhost:5173"},
+    )
+
+    assert response.status_code == 200
+    assert 'const targets = ["http://localhost:5173"' in response.text
+    assert google_auth.OAUTH_ORIGIN_COOKIE in response.headers.get("set-cookie", "")
+
+
 def test_connections_returns_google_state_for_valid_jwt(monkeypatch) -> None:
     monkeypatch.setattr(main, "get_valid_token", lambda business_id: "valid-token")
     monkeypatch.setattr(

@@ -1,8 +1,10 @@
 import logging
 import os
 import secrets
+from json import dumps
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import google_auth_oauthlib.flow
 import requests
@@ -23,6 +25,37 @@ from rate_limit import limiter
 
 router = APIRouter(tags=["google-auth"])
 logger = logging.getLogger("olivander")
+OAUTH_ORIGIN_COOKIE = "olivander_oauth_origin"
+
+
+def normalise_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    parsed = urlparse(value)
+
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def resolve_oauth_message_targets(request: Request) -> list[str]:
+    origins = [
+        request.cookies.get(OAUTH_ORIGIN_COOKIE),
+        request.headers.get("origin"),
+        FRONTEND_ORIGIN,
+        str(request.base_url).rstrip("/"),
+    ]
+    unique_targets: list[str] = []
+
+    for origin in origins:
+        normalised = normalise_origin(origin)
+
+        if normalised and normalised not in unique_targets:
+            unique_targets.append(normalised)
+
+    return unique_targets
 
 
 def create_google_flow(state: str | None = None):
@@ -50,7 +83,7 @@ def create_session_token(business_id: str, email: str, contact_name: str | None 
         "business_id": business_id,
         "email": email,
         "contact_name": contact_name,
-        "exp": datetime.utcnow() + timedelta(days=7),
+        "exp": datetime.now(timezone.utc) + timedelta(days=7),
     }
     return jwt.encode(payload, os.getenv("JWT_SECRET"), algorithm="HS256")
 
@@ -123,7 +156,23 @@ async def auth_google(request: Request) -> JSONResponse:
         include_granted_scopes="true",
         prompt="consent",
     )
-    return JSONResponse({"url": authorization_url})
+    response = JSONResponse({"url": authorization_url})
+    frontend_origin = normalise_origin(request.headers.get("origin")) or normalise_origin(
+        FRONTEND_ORIGIN
+    )
+
+    if frontend_origin:
+        response.set_cookie(
+            OAUTH_ORIGIN_COOKIE,
+            frontend_origin,
+            max_age=600,
+            httponly=True,
+            samesite="lax",
+            secure=frontend_origin.startswith("https://"),
+            path="/",
+        )
+
+    return response
 
 
 @router.get("/auth/google/callback")
@@ -170,27 +219,43 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
         userinfo["email"],
         business.get("contact_name") or userinfo.get("given_name"),
     )
-    return HTMLResponse(
+    message_targets = resolve_oauth_message_targets(request)
+    response = HTMLResponse(
         f"""
         <!doctype html>
         <html>
           <body>
+            <div id="status">Finishing Google connection...</div>
             <script>
               const payload = {{
                 source: "olivander-google-oauth",
                 provider: "google",
                 status: "connected",
-                session: "{session_token}",
-                businessId: "{business_id}"
+                session: {dumps(session_token)},
+                businessId: {dumps(business_id)}
               }};
+              const targets = {dumps(message_targets)};
               if (window.opener) {{
-                window.opener.postMessage(payload, "{FRONTEND_ORIGIN}");
+                for (const target of targets) {{
+                  try {{
+                    window.opener.postMessage(payload, target);
+                  }} catch (error) {{
+                    console.warn("Could not post OAuth result to", target, error);
+                  }}
+                }}
               }}
-              window.close();
+              document.getElementById("status").textContent = "Google connected. You can close this window.";
+              window.setTimeout(() => window.close(), 120);
             </script>
-            Google connected. You can close this window.
           </body>
         </html>
         """
     )
-
+    response.delete_cookie(
+        OAUTH_ORIGIN_COOKIE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+    return response

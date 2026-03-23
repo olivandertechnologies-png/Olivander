@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import OlivanderWand, { useWandState } from './components/OlivanderWand';
 
 const THEME_KEY = 'olivander_theme';
 const SESSION_KEY = 'olivander_session';
@@ -19,6 +18,7 @@ const PANEL_TITLES = {
   activity: 'Activity',
   settings: 'Settings',
 };
+const DEFAULT_BUSINESS_NAME = 'Olivander';
 const TASK_FILTERS = ['all', 'working', 'waiting', 'done'];
 const ACTIVITY_FILTERS = ['all', 'approved', 'auto', 'rejected'];
 const HOME_CHIPS = [
@@ -28,19 +28,32 @@ const HOME_CHIPS = [
   'Summarise inbox',
   'Write a quote',
 ];
+const HOME_HEADLINES = {
+  morning: [
+    { withName: (name) => `Good morning, ${name}.`, withoutName: 'Good morning.' },
+    { withName: (name) => `A clear start, ${name}.`, withoutName: 'A clear start.' },
+    { withName: (name) => `Let's make today lighter, ${name}.`, withoutName: "Let's make today lighter." },
+  ],
+  afternoon: [
+    { withName: (name) => `Keep things moving, ${name}.`, withoutName: 'Keep things moving.' },
+    { withName: (name) => `The day is still yours, ${name}.`, withoutName: 'The day is still yours.' },
+    { withName: (name) => `Let's clear the deck, ${name}.`, withoutName: "Let's clear the deck." },
+  ],
+  evening: [
+    { withName: (name) => `Let's close the loop, ${name}.`, withoutName: "Let's close the loop." },
+    { withName: (name) => `A calm finish, ${name}.`, withoutName: 'A calm finish.' },
+    { withName: (name) => `One last sweep, ${name}.`, withoutName: 'One last sweep.' },
+  ],
+};
 const DEFAULT_POPUP_CLOSE_MS = 120;
-const PANEL_EXIT_MS = 140;
-const PANEL_ENTER_MS = 180;
+const PANEL_EXIT_MS = 100;
+const PANEL_ENTER_MS = 150;
 const THEME_SWITCH_MS = 320;
 const APPROVAL_REMOVE_MS = 200;
 const PROCESSING_PULSE_MS = 1200;
 const PLAN_MOCK_DELAY_MS = 1200;
-const TASKS_AUTO_NAV_DELAY_MS = 800;
 const INBOX_SYNC_INTERVAL_MS = 10000;
 const RECENT_EMAILS_MAX = 12;
-const APPROVAL_FLASH_MS = 300;
-const SUCCESS_FLASH_MS = 3000;
-const ERROR_FLASH_MS = 5000;
 const USE_MOCK_AGENT_PLAN = false;
 const MOCK_PLAN = [
   { description: 'Classify the request and identify intent', tier: 1 },
@@ -208,18 +221,52 @@ function formatActivityTimestamp(value) {
   });
 }
 
-function getGreetingForHour(hour, name = '') {
-  const cleanName = trimToNull(String(name ?? ''));
+function formatDisplayName(value) {
+  const cleanValue = trimToNull(String(value ?? ''));
 
+  if (!cleanValue) {
+    return '';
+  }
+
+  const source = cleanValue.includes('@') ? cleanValue.split('@')[0] : cleanValue;
+  const firstSegment = source
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')[0];
+
+  if (!firstSegment) {
+    return '';
+  }
+
+  return firstSegment.charAt(0).toUpperCase() + firstSegment.slice(1);
+}
+
+function getHomeHeadlineBucket(hour) {
   if (hour < 12) {
-    return cleanName ? `Good morning, ${cleanName}.` : 'Good morning.';
+    return 'morning';
   }
 
   if (hour < 18) {
-    return cleanName ? `Good afternoon, ${cleanName}.` : 'Good afternoon.';
+    return 'afternoon';
   }
 
-  return cleanName ? `Good evening, ${cleanName}.` : 'Good evening.';
+  return 'evening';
+}
+
+function pickRandomHomeHeadlineVariant(currentTime) {
+  const variants = HOME_HEADLINES[getHomeHeadlineBucket(currentTime.getHours())];
+
+  if (!variants?.length) {
+    return HOME_HEADLINES.morning[0];
+  }
+
+  return variants[Math.floor(Math.random() * variants.length)] ?? variants[0];
+}
+
+function renderHomeHeadline(variant, name = '') {
+  const cleanName = formatDisplayName(name);
+  return cleanName ? variant.withName(cleanName) : variant.withoutName;
 }
 
 function normaliseTaskTitle(value) {
@@ -543,7 +590,7 @@ function buildTaskDraftPreview(request, sourceEmail = null) {
       text:
         `Hi ${recipient},\n\n` +
         'Thanks for your message. I am pulling the details together now and will make sure the next step is clear and easy to action.\n\n' +
-        'Best,\nOlivander Technologies',
+        `Best,\n${DEFAULT_BUSINESS_NAME}`,
     };
   }
 
@@ -581,7 +628,7 @@ function buildTaskDraftPreview(request, sourceEmail = null) {
       text:
         `Hi ${recipient},\n\n` +
         'I have pulled together a couple of options for the meeting and will confirm the best slot next.\n\n' +
-        'Best,\nOlivander Technologies',
+        `Best,\n${DEFAULT_BUSINESS_NAME}`,
     };
   }
 
@@ -768,7 +815,7 @@ function buildApprovalFromEmail(email, taskId) {
 
 function createEmptyMemoryProfile() {
   return {
-    [MEMORY_KEYS.businessName]: 'Olivander Technologies',
+    [MEMORY_KEYS.businessName]: DEFAULT_BUSINESS_NAME,
     [MEMORY_KEYS.ownerEmail]: '',
     [MEMORY_KEYS.businessType]: '',
     [MEMORY_KEYS.pricingRange]: '',
@@ -1118,18 +1165,6 @@ function GoogleIcon() {
       <path
         fill="#ea4335"
         d="M14 7.58c1.52 0 2.89.52 3.96 1.54l2.97-2.97C19.15 4.49 16.8 3.5 14 3.5a10.38 10.38 0 0 0-9.26 5.66l3.47 2.69c.8-2.45 3.08-4.27 5.79-4.27Z"
-      />
-    </svg>
-  );
-}
-
-function XeroIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
-      <circle cx="14" cy="14" r="13" fill="#13b5ea" />
-      <path
-        d="m10.3 10.1 3.55 3.57 3.6-3.57h1.7l-4.45 4.45 4.45 4.45h-1.7l-3.6-3.57-3.55 3.57H8.6l4.43-4.45-4.43-4.45h1.7Z"
-        fill="#fff"
       />
     </svg>
   );
@@ -1652,56 +1687,9 @@ function PlanStepRows({ steps }) {
   ));
 }
 
-function AgentRunPanel({ planState, planSteps, onCancel, onApproveAll }) {
-  if (!planState) {
-    return null;
-  }
-
-  return (
-    <div className="plan-box">
-      {planState === 'loading' ? (
-        <div className="plan-box__loading">
-          <div className="plan-spinner" />
-          Working out a plan...
-        </div>
-      ) : null}
-
-      {planState === 'ready' ? (
-        <>
-          <div className="plan-box__header">
-            <span className="plan-box__label">Proposed plan</span>
-            <div className="plan-box__actions">
-              <button className="plan-cancel" onClick={onCancel}>
-                Cancel
-              </button>
-              <button className="plan-approve-all" onClick={onApproveAll}>
-                Approve all
-              </button>
-            </div>
-          </div>
-
-          <div className="plan-box__steps">
-            <PlanStepRows steps={planSteps} />
-          </div>
-        </>
-      ) : null}
-
-      {planState === 'error' ? (
-        <div className="plan-box__error">
-          <span className="plan-box__error-text">
-            Could not generate a plan — check your connection.
-          </span>
-          <button className="plan-cancel" onClick={onCancel}>
-            Dismiss
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function HomePanel({
   currentTime,
+  headlineVariant,
   greetingName,
   homeInput,
   onHomeInputChange,
@@ -1711,10 +1699,6 @@ function HomePanel({
   awaitingApprovalCount,
   activeTaskCount,
   resolvedThisWeekCount,
-  planState,
-  planSteps,
-  onDismissPlan,
-  onApprovePlan,
 }) {
   const subtitle =
     awaitingApprovalCount > 0
@@ -1726,7 +1710,7 @@ function HomePanel({
   return (
     <section className="panel-scroll__inner home-panel">
       <div className="greeting-block">
-        <h2 className="display-title">{getGreetingForHour(currentTime.getHours(), greetingName)}</h2>
+        <h2 className="display-title">{renderHomeHeadline(headlineVariant, greetingName)}</h2>
         {subtitle ? <p className="greeting-subtitle">{subtitle}</p> : null}
       </div>
 
@@ -1790,15 +1774,6 @@ function HomePanel({
           ))}
         </div>
       </section>
-
-      {planState ? (
-        <AgentRunPanel
-          planState={planState}
-          planSteps={planSteps}
-          onCancel={onDismissPlan}
-          onApproveAll={onApprovePlan}
-        />
-      ) : null}
     </section>
   );
 }
@@ -1823,8 +1798,7 @@ function TasksPanel({
 }) {
   return (
     <section className="panel-scroll__inner tasks-panel">
-      <div className="panel-heading panel-heading--row">
-        <h2 className="section-title">Tasks</h2>
+      <div className="panel-heading panel-heading--row panel-heading--actions-only">
         <button
           type="button"
           className="primary-button"
@@ -1922,10 +1896,6 @@ function ActivityPanel({
 }) {
   return (
     <section className="panel-scroll__inner activity-panel">
-      <div className="panel-heading">
-        <h2 className="section-title">Activity</h2>
-      </div>
-
       <div className="filter-row filter-row--spacious">
         {ACTIVITY_FILTERS.map((filter) => (
           <button
@@ -1993,24 +1963,6 @@ function SettingsPanel({
                 : googleConnected
                   ? 'Connected'
                   : 'Connect Google'}
-            </button>
-          </div>
-
-          <div className="connection-row">
-            <div className="connection-row__left">
-              <XeroIcon />
-              <div>
-                <div className="connection-row__name">Xero</div>
-                <div className="connection-row__meta">Invoicing · Payments</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="connection-button is-primary is-disabled"
-              disabled
-              title="Coming soon"
-            >
-              Connect Xero
             </button>
           </div>
         </section>
@@ -2093,7 +2045,6 @@ function MemoryPanel({ profile, isLoading, memoryError }) {
 }
 
 function DashboardApp() {
-  const { flick, flashWandState, setWandState } = useWandState();
   const processedEmailIdsRef = useRef(getStoredProcessedEmailIds());
   const oauthPollRef = useRef(null);
   const profileMenuTimerRef = useRef(null);
@@ -2108,6 +2059,7 @@ function DashboardApp() {
 
   const [theme, setTheme] = useState(getInitialTheme);
   const [isThemeSwitching, setIsThemeSwitching] = useState(false);
+  const [homeHeadlineVariant] = useState(() => pickRandomHomeHeadlineVariant(new Date()));
   const [sessionToken, setSessionToken] = useState(getStoredSession);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -2120,9 +2072,6 @@ function DashboardApp() {
   const [showTaskComposer, setShowTaskComposer] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isWorkflowProcessing, setIsWorkflowProcessing] = useState(false);
-  const [planState, setPlanState] = useState(null);
-  const [homePlanSteps, setHomePlanSteps] = useState([]);
-  const [homeRunTask, setHomeRunTask] = useState(null);
   const [businessContactName, setBusinessContactName] = useState('');
   const [sessionBusinessName, setSessionBusinessName] = useState('');
   const [tasks, setTasks] = useState([]);
@@ -2145,8 +2094,7 @@ function DashboardApp() {
   );
   const sortedApprovals = [...approvals].sort((left, right) => right.createdAt - left.createdAt);
   const activeTaskCount = tasks.filter((task) => task.status !== 'done').length;
-  const businessName =
-    trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? 'Olivander Technologies';
+  const businessName = trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? DEFAULT_BUSINESS_NAME;
   const profileMeta = trimToNull(memoryProfile[MEMORY_KEYS.businessType]) ?? 'Workspace';
   const isSettingsPanel = activePanel === 'settings';
 
@@ -2178,19 +2126,23 @@ function DashboardApp() {
   ).length;
   const sessionPayload = decodeSessionPayload(sessionToken);
   const tokenContactName = trimToNull(String(sessionPayload?.contact_name ?? '')) ?? '';
-  const tokenEmailName =
-    trimToNull(String(sessionPayload?.email ?? '').split('@')[0] ?? '') ?? '';
+  const tokenFirstName = trimToNull(String(sessionPayload?.first_name ?? '')) ?? '';
+  const tokenEmailName = trimToNull(String(sessionPayload?.email ?? '')) ?? '';
+  const ownerEmailName = trimToNull(String(memoryProfile[MEMORY_KEYS.ownerEmail] ?? '')) ?? '';
   const memoryBusinessName = trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? '';
   const resolvedBusinessName =
     (trimToNull(sessionBusinessName) ?? '') ||
-    (memoryBusinessName && memoryBusinessName !== 'Olivander Technologies'
+    (memoryBusinessName && memoryBusinessName !== DEFAULT_BUSINESS_NAME
       ? memoryBusinessName
       : '');
-  const greetingName =
-    tokenContactName ||
-    (trimToNull(businessContactName) ?? '') ||
-    resolvedBusinessName ||
-    tokenEmailName;
+  const greetingName = [
+    tokenContactName,
+    tokenFirstName,
+    trimToNull(businessContactName) ?? '',
+    tokenEmailName,
+    ownerEmailName,
+    resolvedBusinessName,
+  ].find((candidate) => formatDisplayName(candidate)) ?? '';
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -2223,25 +2175,6 @@ function DashboardApp() {
 
     setExpandedTaskId(tasks[0].id);
   }, [expandedTaskId, tasks]);
-
-  useEffect(() => {
-    const nextBaseState = isPlanning
-      ? 'thinking'
-      : isWorkflowProcessing
-        ? 'processing'
-        : googleConnected || activeTaskCount || sortedApprovals.length
-          ? 'active'
-          : 'inactive';
-
-    setWandState(nextBaseState);
-  }, [
-    activeTaskCount,
-    googleConnected,
-    isPlanning,
-    isWorkflowProcessing,
-    sortedApprovals.length,
-    setWandState,
-  ]);
 
   useEffect(
     () => () => {
@@ -2346,7 +2279,7 @@ function DashboardApp() {
       setGoogleConnected(true);
       setGoogleBusy(false);
       addActivityItem('resolved', 'Google Workspace connected', 'Gmail and Calendar are ready.');
-      flashWandState('success', SUCCESS_FLASH_MS);
+      void syncGoogleConnectionStatus({ silent: true });
     }
 
     window.addEventListener('message', handleOauthMessage);
@@ -2355,7 +2288,7 @@ function DashboardApp() {
     return () => {
       window.removeEventListener('message', handleOauthMessage);
     };
-  }, [flashWandState, sessionToken]);
+  }, [sessionToken]);
 
   useEffect(() => {
     if (!sessionToken) {
@@ -2558,10 +2491,6 @@ function DashboardApp() {
       setBusinessContactName('');
       setSessionBusinessName('');
 
-      if (!silent) {
-        flashWandState('error', ERROR_FLASH_MS);
-      }
-
       return false;
     }
   }
@@ -2686,8 +2615,39 @@ function DashboardApp() {
     }
 
     setGoogleBusy(true);
+    const popupWindow = window.open(
+      '',
+      'olivander-google-oauth',
+      'popup=yes,width=560,height=720',
+    );
 
     try {
+      if (!popupWindow) {
+        throw new Error('Popup blocked');
+      }
+
+      popupWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Connecting Google...</title>
+            <style>
+              body {
+                margin: 0;
+                min-height: 100vh;
+                display: grid;
+                place-items: center;
+                background: #f3f0e8;
+                color: #1c1a14;
+                font: 500 16px "DM Sans", system-ui, sans-serif;
+              }
+            </style>
+          </head>
+          <body>Connecting Google...</body>
+        </html>
+      `);
+      popupWindow.document.close();
+
       const response = await fetch(buildBackendUrl('/auth/google'), {
         credentials: 'include',
       });
@@ -2697,21 +2657,12 @@ function DashboardApp() {
       }
 
       const payload = await response.json();
-      const popupWindow = window.open(
-        payload.url,
-        'olivander-google-oauth',
-        'popup=yes,width=560,height=720',
-      );
-
-      if (!popupWindow) {
-        throw new Error('Popup blocked');
-      }
-
+      popupWindow.location.replace(payload.url);
       popupWindow.focus();
       watchOauthPopup(popupWindow);
     } catch (error) {
+      popupWindow?.close();
       setGoogleBusy(false);
-      flashWandState('error', ERROR_FLASH_MS);
     }
   }
 
@@ -2741,7 +2692,6 @@ function DashboardApp() {
       openSettings('connections');
     } catch (error) {
       setGoogleBusy(false);
-      flashWandState('error', ERROR_FLASH_MS);
     }
   }
 
@@ -2819,7 +2769,6 @@ function DashboardApp() {
       return;
     }
 
-    flick();
     pulseProcessing();
     setIsPlanning(true);
 
@@ -2831,25 +2780,13 @@ function DashboardApp() {
         clarifyingQuestion: null,
         planRequestState: 'loading',
       });
-      if (origin === 'home') {
-        setPlanState('loading');
-        setHomePlanSteps([]);
-        setHomeRunTask(null);
-      }
 
       setTasks((current) => [baseTask, ...current]);
       setExpandedTaskId(baseTask.id);
       addActivityItem('draft', 'Task created', baseTask.name);
 
       if (origin === 'home') {
-        panelTimersRef.current.push(
-          window.setTimeout(() => {
-            setPlanState(null);
-            setHomePlanSteps([]);
-            setHomeRunTask(null);
-            requestPanel('tasks');
-          }, TASKS_AUTO_NAV_DELAY_MS),
-        );
+        requestPanel('tasks');
       }
 
       const createdTask = await createTaskWithAgentPlan(value, { baseTask });
@@ -2858,12 +2795,6 @@ function DashboardApp() {
       );
       setExpandedTaskId(createdTask.id);
 
-      if (origin === 'home' && activePanelRef.current === 'home') {
-        setHomeRunTask(createdTask);
-        setHomePlanSteps(getDisplayPlanSteps(createdTask.planSteps));
-        setPlanState('ready');
-      }
-
       if (origin === 'tasks') {
         setTaskInput('');
         setShowTaskComposer(false);
@@ -2871,12 +2802,6 @@ function DashboardApp() {
         setHomeInput('');
       }
     } catch {
-      if (origin === 'home') {
-        setPlanState('error');
-        setHomeRunTask(null);
-        setHomePlanSteps([]);
-      }
-      flashWandState('error', ERROR_FLASH_MS);
     } finally {
       setIsPlanning(false);
     }
@@ -2934,7 +2859,6 @@ function DashboardApp() {
     processedEmailIdsRef.current.add(normalisedEmail.id);
     persistProcessedEmailIds(processedEmailIdsRef.current);
 
-    flick();
     pulseProcessing();
     setIsPlanning(true);
 
@@ -3054,14 +2978,12 @@ function DashboardApp() {
         ),
       );
       addActivityItem('approved', 'Approved', approval.subject);
-      flashWandState('success', APPROVAL_FLASH_MS);
     } catch {
       setRemovingApprovals((current) => {
         const next = { ...current };
         delete next[approval.id];
         return next;
       });
-      flashWandState('error', ERROR_FLASH_MS);
     }
   }
 
@@ -3097,7 +3019,6 @@ function DashboardApp() {
     );
 
     addActivityItem('rejected', 'Rejected', approval.subject);
-    flashWandState('error', APPROVAL_FLASH_MS);
   }
 
   function handleSaveApprovalEdit(approval, nextText) {
@@ -3243,7 +3164,6 @@ function DashboardApp() {
       ),
     );
     addActivityItem('approved', 'Approved', task.name);
-    flashWandState('success', APPROVAL_FLASH_MS);
   }
 
   function handleCancelTask(task) {
@@ -3275,7 +3195,6 @@ function DashboardApp() {
     }
 
     addActivityItem('rejected', 'Cancelled', task.name);
-    flashWandState('error', APPROVAL_FLASH_MS);
 
     window.setTimeout(() => {
       setTasks((current) => current.filter((item) => item.id !== task.id));
@@ -3294,32 +3213,7 @@ function DashboardApp() {
         });
       }
 
-      if (homeRunTask?.id === task.id) {
-        setPlanState(null);
-        setHomePlanSteps([]);
-        setHomeRunTask(null);
-      }
     }, APPROVAL_REMOVE_MS);
-  }
-
-  function handleApproveHomePlan(task) {
-    if (!task) {
-      return;
-    }
-
-    setExpandedTaskId(task.id);
-    setPlanState(null);
-    setHomePlanSteps([]);
-    setHomeRunTask(null);
-    addActivityItem('approved', 'Plan approved', task.name);
-    flashWandState('success', APPROVAL_FLASH_MS);
-    requestPanel('tasks');
-  }
-
-  function dismissHomePlan() {
-    setPlanState(null);
-    setHomePlanSteps([]);
-    setHomeRunTask(null);
   }
 
   async function handleLogout() {
@@ -3395,7 +3289,6 @@ function DashboardApp() {
 
       <aside className="sidebar">
         <button type="button" className="sidebar__logo-row" onClick={handleLogoClick}>
-          <OlivanderWand />
           <div className="wordmark" aria-label="Olivander">
             <span className="wordmark__o">O</span>
             <span className="wordmark__rest">livander</span>
@@ -3457,7 +3350,7 @@ function DashboardApp() {
                 .split(/\s+/)
                 .slice(0, 2)
                 .map((part) => part.charAt(0).toUpperCase())
-                .join('') || 'OT'}
+                .join('') || 'O'}
             </span>
             <span className="profile-trigger__copy">
               <span className="profile-trigger__name">{businessName}</span>
@@ -3479,6 +3372,7 @@ function DashboardApp() {
             {activePanel === 'home' ? (
               <HomePanel
                 currentTime={currentTime}
+                headlineVariant={homeHeadlineVariant}
                 greetingName={greetingName}
                 homeInput={homeInput}
                 onHomeInputChange={setHomeInput}
@@ -3491,10 +3385,6 @@ function DashboardApp() {
                 awaitingApprovalCount={sortedApprovals.length}
                 activeTaskCount={activeTaskCount}
                 resolvedThisWeekCount={resolvedThisWeekCount}
-                planState={planState}
-                planSteps={homePlanSteps}
-                onDismissPlan={dismissHomePlan}
-                onApprovePlan={() => handleApproveHomePlan(homeRunTask)}
               />
             ) : null}
 
