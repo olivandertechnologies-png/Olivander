@@ -4,10 +4,12 @@ import OlivanderWand, { useWandState } from './components/OlivanderWand';
 const THEME_KEY = 'olivander_theme';
 const SESSION_KEY = 'olivander_session';
 const PROCESSED_EMAIL_IDS_KEY = 'olivander_processed_email_ids';
+const DEFAULT_BACKEND_BASE_URL =
+  typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000';
 const BACKEND_BASE_URL = (
   import.meta.env.VITE_API_URL ??
   import.meta.env.VITE_API_BASE_URL ??
-  'http://localhost:8000'
+  DEFAULT_BACKEND_BASE_URL
 ).replace(/\/$/, '');
 const BACKEND_ORIGIN = new URL(BACKEND_BASE_URL).origin;
 const PANEL_TITLES = {

@@ -1,0 +1,11 @@
+.git
+.DS_Store
+output
+backend/.env
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+backend/logs
+frontend/node_modules
+frontend/dist
+frontend/.playwright-cli
