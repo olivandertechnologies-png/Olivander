@@ -76,10 +76,7 @@ textarea::placeholder {
 .app-shell.is-theme-switching .connection-button,
 .app-shell.is-theme-switching .chip-button,
 .app-shell.is-theme-switching .filter-chip,
-.app-shell.is-theme-switching .ui-icon,
-.app-shell.is-theme-switching .tip-aura,
-.app-shell.is-theme-switching .tip-orb,
-.app-shell.is-theme-switching .tip-spark {
+.app-shell.is-theme-switching .ui-icon {
   transition:
     background-color 280ms ease,
     color 280ms ease,
@@ -146,9 +143,9 @@ textarea::placeholder {
 .sidebar__logo-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-start;
   width: 100%;
-  padding: 20px 18px 16px;
+  padding: 24px 18px 18px;
   text-align: left;
   cursor: pointer;
   transition: opacity 180ms ease;
@@ -163,14 +160,15 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.45px;
+  line-height: 0.95;
+  letter-spacing: -0.5px;
 }
 
 .wordmark__o {
   color: var(--act);
+  margin-right: -0.015em;
 }
 
 .wordmark__rest {
@@ -438,11 +436,11 @@ textarea::placeholder {
 }
 
 .panel-enter {
-  animation: panelFadeIn 220ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+  animation: panelFadeIn 150ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
 }
 
 .panel-exit {
-  animation: panelFadeOut 140ms ease-in forwards;
+  animation: panelFadeOut 100ms ease-in forwards;
 }
 
 .panel-scroll__inner {
@@ -860,6 +858,10 @@ textarea::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.panel-heading--actions-only {
+  justify-content: flex-end;
 }
 
 .section-title {
@@ -1767,213 +1769,6 @@ textarea::placeholder {
   background: var(--warn);
 }
 
-.wand {
-  display: block;
-  width: 44px;
-  height: auto;
-  flex: 0 0 auto;
-  overflow: visible;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  margin-top: 0;
-  transform-origin: 70px 65px;
-  transform-box: fill-box;
-}
-
-.wand.is-flicking {
-  animation: wandFlick 0.58s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.wand-highlight {
-  opacity: 0.34;
-  transition: opacity 180ms ease;
-}
-
-.wand-body {
-  opacity: 1;
-  transition: opacity 180ms ease, fill 180ms ease;
-}
-
-.wand-collar {
-  transition: opacity 180ms ease;
-}
-
-.tip-aura,
-.tip-aura-g,
-.tip-aura-r,
-.tip-orb,
-.tip-spark {
-  transform-origin: center;
-  transform-box: fill-box;
-  transition:
-    opacity 180ms ease,
-    fill 180ms ease,
-    transform 180ms ease;
-}
-
-.tip-aura {
-  filter: saturate(1.12);
-}
-
-.tip-aura-g,
-.tip-aura-r {
-  filter: saturate(1.06);
-}
-
-.tip-orb {
-  filter: drop-shadow(0 0 6px rgba(131, 119, 232, 0.62));
-}
-
-.tip-shimmer {
-  fill: none;
-  stroke: rgba(218, 210, 255, 0.9);
-  stroke-width: 1.8;
-  stroke-dasharray: 8 80;
-  stroke-linecap: round;
-  animation: shimmerPulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  opacity: 0;
-}
-
-.wand--inactive .tip-aura,
-.wand--inactive .tip-aura-g,
-.wand--inactive .tip-aura-r {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--inactive .tip-orb {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--inactive .tip-spark {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--active .tip-aura {
-  opacity: 0.65;
-  animation: none;
-}
-
-.wand--active .tip-aura-g,
-.wand--active .tip-aura-r {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--active .tip-orb {
-  opacity: 1;
-  animation: none;
-}
-
-.wand--active .tip-spark {
-  opacity: 0.95;
-  animation: none;
-}
-
-.wand--thinking .wand-body {
-  opacity: 1;
-}
-
-.wand--thinking .tip-aura {
-  opacity: 0.4;
-  animation: auraBreathe 3.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-}
-
-.wand--thinking .tip-aura-g,
-.wand--thinking .tip-aura-r {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--thinking .tip-orb {
-  opacity: 0.68;
-  animation: orbBreathe 3.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-  animation-delay: 0.4s;
-}
-
-.wand--thinking .tip-spark {
-  opacity: 0.9;
-  animation: sparkFlicker 3.2s ease-in-out infinite;
-  animation-delay: 1.6s;
-}
-
-.wand--processing .tip-aura {
-  opacity: 0.92;
-  animation: none;
-}
-
-.wand--processing .tip-aura-g,
-.wand--processing .tip-aura-r {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--processing .tip-orb {
-  opacity: 1;
-  animation: none;
-}
-
-.wand--processing .tip-spark {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--processing .tip-shimmer {
-  opacity: 1;
-}
-
-.wand--success .tip-aura {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--success .tip-aura-g {
-  opacity: 0.75;
-  animation: successBurst 0.9s ease-out both;
-}
-
-.wand--success .tip-aura-r {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--success .tip-orb {
-  fill: var(--wand-success-orb);
-  opacity: 1;
-}
-
-.wand--success .tip-spark {
-  opacity: 0.95;
-}
-
-.wand--error .tip-aura {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--error .tip-aura-g {
-  opacity: 0;
-  animation: none;
-}
-
-.wand--error .tip-aura-r {
-  opacity: 0.55;
-  animation: errFlick 1.4s linear both;
-}
-
-.wand--error .tip-orb {
-  fill: var(--wand-error-orb);
-  opacity: 1;
-}
-
-.wand--error .tip-spark {
-  opacity: 0;
-}
-
 @keyframes ambientFloat {
   0%,
   100% {
@@ -2145,173 +1940,6 @@ textarea::placeholder {
   }
 }
 
-@keyframes auraBreathe {
-  0% {
-    opacity: 0.18;
-    r: 7;
-  }
-
-  25% {
-    opacity: 0.28;
-    r: 7.4;
-  }
-
-  50% {
-    opacity: 0.62;
-    r: 8.3;
-  }
-
-  75% {
-    opacity: 0.4;
-    r: 7.7;
-  }
-
-  100% {
-    opacity: 0.18;
-    r: 7;
-  }
-}
-
-@keyframes orbBreathe {
-  0% {
-    opacity: 0.55;
-  }
-
-  30% {
-    opacity: 0.72;
-  }
-
-  55% {
-    opacity: 1;
-  }
-
-  80% {
-    opacity: 0.8;
-  }
-
-  100% {
-    opacity: 0.55;
-  }
-}
-
-@keyframes sparkFlicker {
-  0%,
-  100% {
-    opacity: 0;
-  }
-
-  50% {
-    opacity: 0.6;
-  }
-
-  55% {
-    opacity: 0.9;
-  }
-
-  60% {
-    opacity: 0.5;
-  }
-
-  65% {
-    opacity: 1;
-  }
-
-  72% {
-    opacity: 0.3;
-  }
-}
-
-@keyframes shimmerPulse {
-  0% {
-    stroke-dashoffset: 85;
-    opacity: 0;
-  }
-
-  8% {
-    opacity: 0.9;
-  }
-
-  85% {
-    opacity: 0.75;
-  }
-
-  95% {
-    stroke-dashoffset: -10;
-    opacity: 0;
-  }
-
-  100% {
-    stroke-dashoffset: -10;
-    opacity: 0;
-  }
-}
-
-@keyframes successBurst {
-  0% {
-    opacity: 0;
-  }
-
-  40% {
-    opacity: 1;
-  }
-
-  70% {
-    opacity: 0.75;
-  }
-
-  100% {
-    opacity: 0.45;
-  }
-}
-
-@keyframes errFlick {
-  0% {
-    opacity: 0.5;
-  }
-
-  20% {
-    opacity: 0.05;
-  }
-
-  45% {
-    opacity: 0.62;
-  }
-
-  70% {
-    opacity: 0.08;
-  }
-
-  100% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes wandFlick {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  20% {
-    transform: rotate(6deg);
-  }
-
-  46% {
-    transform: rotate(-1.6deg);
-  }
-
-  64% {
-    transform: rotate(0.8deg);
-  }
-
-  80% {
-    transform: rotate(-0.2deg);
-  }
-
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
 @media (max-width: 960px) {
   .stats-grid {
     grid-template-columns: 1fr;
@@ -2331,6 +1959,13 @@ textarea::placeholder {
 }
 
 @media (max-width: 640px) {
+  .top-bar__inner {
+    padding-inline: 24px;
+  }
+
+  .top-bar__title {
+    font-size: 20px;
+  }
   .instruction-card__row,
   .task-composer,
   .note-row {
