@@ -18,7 +18,6 @@ from agent.draft import generate_agent_plan
 from auth.deps import get_current_business
 from auth.google import router as google_auth_router
 from auth.tokens import clear_business_tokens, get_valid_token
-from config import FRONTEND_ORIGIN
 from db.supabase import (
     get_business_by_id,
     get_memory_profile,
@@ -59,9 +58,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        origin
-        for origin in [FRONTEND_ORIGIN, "http://localhost:5173", "http://localhost:3000"]
-        if origin
+        "http://localhost:5173",
+        "https://olivander.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
