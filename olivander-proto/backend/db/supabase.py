@@ -146,3 +146,107 @@ def set_memory_value(business_id: str, key: str, value: str) -> None:
         .insert({"business_id": business_id, "key": key, "value": value})
         .execute()
     )
+
+
+def create_approval(
+    business_id: str,
+    approval_type: str,
+    who: str | None = None,
+    what: str | None = None,
+    why: str | None = None,
+    original_email_id: str | None = None,
+    draft_content: str | None = None,
+) -> dict[str, Any] | None:
+    """Create a pending approval in the approvals table."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .insert({
+            "business_id": business_id,
+            "status": "pending",
+            "type": approval_type,
+            "who": who,
+            "what": what,
+            "why": why,
+            "original_email_id": original_email_id,
+            "draft_content": draft_content,
+            "when_ts": None,
+        })
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_approval_by_id(approval_id: str) -> dict[str, Any] | None:
+    """Get an approval by ID."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .select("*")
+        .eq("id", approval_id)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def update_approval_status(
+    approval_id: str,
+    status: str,
+    edited_content: str | None = None,
+    when_ts: str | None = None,
+) -> None:
+    """Update approval status (pending -> approved/rejected/edited)."""
+    update_data = {"status": status}
+    if edited_content:
+        update_data["edited_content"] = edited_content
+    if when_ts:
+        update_data["when_ts"] = when_ts
+
+    (
+        get_supabase_client()
+        .table("approvals")
+        .update(update_data)
+        .eq("id", approval_id)
+        .execute()
+    )
+
+
+def log_activity(
+    business_id: str,
+    description: str,
+    activity_type: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Log an activity/action to the activity table."""
+    (
+        get_supabase_client()
+        .table("activity")
+        .insert({
+            "business_id": business_id,
+            "description": description,
+            "type": activity_type,
+            "metadata": metadata or {},
+        })
+        .execute()
+    )
+
+
+def get_approvals_for_business(
+    business_id: str,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Get approvals for a business, optionally filtered by status."""
+    query = (
+        get_supabase_client()
+        .table("approvals")
+        .select("*")
+        .eq("business_id", business_id)
+        .order("created_at", desc=True)
+    )
+
+    if status:
+        query = query.eq("status", status)
+
+    response = query.execute()
+    return response.data or []

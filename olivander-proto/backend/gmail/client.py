@@ -88,6 +88,42 @@ def list_recent_messages(
     return [get_message(access_token, message["id"]) for message in message_refs if message.get("id")]
 
 
+def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
+    """Get all messages in a thread."""
+    response = requests.get(
+        f"{GMAIL_API_BASE_URL}/threads/{thread_id}",
+        params={"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]},
+        headers=_gmail_headers(access_token),
+        timeout=20,
+    )
+
+    if not response.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gmail get thread failed with status {response.status_code}.",
+        )
+
+    thread_data = response.json()
+    messages = []
+
+    for msg_data in thread_data.get("messages", []):
+        headers = msg_data.get("payload", {}).get("headers", [])
+        sender_name, sender_email = parseaddr(
+            _get_header_value(headers, "From", "Unknown Sender <unknown@example.com>")
+        )
+
+        messages.append({
+            "id": msg_data.get("id"),
+            "from": sender_email or sender_name or "unknown@example.com",
+            "from_name": sender_name or sender_email or "Unknown Sender",
+            "subject": _get_header_value(headers, "Subject", ""),
+            "snippet": msg_data.get("snippet", ""),
+            "date": _get_header_value(headers, "Date", ""),
+        })
+
+    return messages
+
+
 def send_message(
     access_token: str,
     *,

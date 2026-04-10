@@ -15,10 +15,12 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from agent.draft import generate_agent_plan
+from api.actions import router as actions_router
 from auth.deps import get_current_business
 from auth.google import router as google_auth_router
 from auth.tokens import clear_business_tokens, get_valid_token
 from db.supabase import (
+    get_approvals_for_business,
     get_business_by_id,
     get_memory_profile,
     set_memory_value,
@@ -68,6 +70,7 @@ app.add_middleware(
 
 app.include_router(google_auth_router)
 app.include_router(gmail_webhook_router)
+app.include_router(actions_router)
 
 if FRONTEND_ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
@@ -296,6 +299,17 @@ async def action_email(
         "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "gmail": send_response,
     }
+
+
+@app.get("/api/approvals")
+@limiter.limit("60/minute")
+async def get_approvals(
+    request: Request,
+    status: str | None = None,
+    business_id: str = Depends(get_current_business),
+) -> list[dict[str, Any]]:
+    """Get all approvals for the current business."""
+    return get_approvals_for_business(business_id, status=status)
 
 
 @app.get("/health", include_in_schema=False)
