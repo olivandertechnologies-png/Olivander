@@ -23,6 +23,7 @@ from config import (
     GOOGLE_SCOPES,
 )
 from db.supabase import get_supabase_client
+from gmail.client import setup_gmail_watch
 from rate_limit import limiter
 
 router = APIRouter(tags=["google-auth"])
@@ -237,6 +238,15 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
         business_name=userinfo.get("name"),
         contact_name=userinfo.get("given_name"),
     )
+
+    # Set up Gmail push notifications if a Pub/Sub topic is configured.
+    pubsub_topic = os.getenv("PUBSUB_TOPIC")
+    if pubsub_topic:
+        try:
+            setup_gmail_watch(access_token, pubsub_topic)
+            logger.info("Gmail watch registered for %s", userinfo["email"])
+        except Exception as watch_error:
+            logger.warning("Gmail watch setup failed (non-fatal): %s", watch_error)
 
     business_id = str(business["id"])
     session_token = create_session_token(

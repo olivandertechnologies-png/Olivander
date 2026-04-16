@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+from email.utils import parseaddr
 from logging.handlers import RotatingFileHandler
 from typing import Any, Literal
 
@@ -19,6 +20,7 @@ from auth.deps import get_current_business
 from auth.google import router as google_auth_router
 from auth.tokens import clear_business_tokens, get_valid_token
 from db.supabase import (
+    create_approval,
     get_approvals_for_business,
     get_business_by_id,
     get_memory_profile,
@@ -322,6 +324,48 @@ async def action_email(
 _APPROVAL_STATUSES = {"pending", "approved", "rejected"}
 
 
+class CreateApprovalRequest(BaseModel):
+    sourceEmailId: str | None = None
+    senderName: str = ""
+    senderEmail: str = ""
+    subject: str = ""
+    agentResponse: str = ""
+    tier: str = "Tier 3"
+    why: str = ""
+
+
+def _normalise_approval_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Map a Supabase approval row to the shape the frontend expects."""
+    who = row.get("who") or ""
+    sender_name, sender_email = parseaddr(who)
+    if not sender_email:
+        sender_email = who
+        sender_name = who
+
+    created_at_raw = row.get("created_at")
+    created_at_ms: int | None = None
+    if created_at_raw:
+        try:
+            dt = datetime.datetime.fromisoformat(str(created_at_raw).replace("Z", "+00:00"))
+            created_at_ms = int(dt.timestamp() * 1000)
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "id": str(row.get("id", "")),
+        "senderName": sender_name or "Unknown sender",
+        "senderEmail": sender_email or "unknown@example.com",
+        "subject": row.get("what") or "Untitled",
+        "createdAt": created_at_ms,
+        "tier": f"Tier {row.get('tier', 3)}",
+        "why": row.get("why") or "",
+        "agentResponse": row.get("edited_content") or row.get("draft_content") or "",
+        "status": "edited" if row.get("edited_content") else "review",
+        "sourceEmailId": row.get("original_email_id"),
+        "taskId": None,
+    }
+
+
 @app.get("/api/approvals")
 @limiter.limit("60/minute")
 async def get_approvals(
@@ -332,7 +376,35 @@ async def get_approvals(
     """Get all approvals for the current business."""
     if status is not None and status not in _APPROVAL_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(_APPROVAL_STATUSES)}")
-    return get_approvals_for_business(business_id, status=status)
+    rows = get_approvals_for_business(business_id, status=status)
+    return [_normalise_approval_row(row) for row in rows]
+
+
+@app.post("/api/approvals")
+@limiter.limit("60/minute")
+async def create_approval_endpoint(
+    request: Request,
+    payload: CreateApprovalRequest,
+    business_id: str = Depends(get_current_business),
+) -> dict[str, Any]:
+    """Persist a frontend approval to Supabase."""
+    who = (
+        f"{payload.senderName} <{payload.senderEmail}>"
+        if payload.senderName
+        else payload.senderEmail
+    )
+    row = create_approval(
+        business_id=business_id,
+        approval_type="email_reply",
+        who=who,
+        what=payload.subject,
+        why=payload.why or "This message changes a customer-facing action and should be reviewed before sending.",
+        original_email_id=payload.sourceEmailId,
+        draft_content=payload.agentResponse,
+    )
+    if not row:
+        raise HTTPException(status_code=500, detail="Could not create approval.")
+    return _normalise_approval_row(row)
 
 
 @app.get("/health", include_in_schema=False)

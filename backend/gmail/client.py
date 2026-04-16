@@ -147,6 +147,24 @@ def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
     return messages
 
 
+def setup_gmail_watch(access_token: str, topic_name: str) -> dict[str, Any]:
+    """Register a Pub/Sub push subscription for this Gmail inbox."""
+    response = requests.post(
+        f"{GMAIL_API_BASE_URL}/watch",
+        json={"topicName": topic_name, "labelIds": ["INBOX"], "labelFilterAction": "include"},
+        headers={**_gmail_headers(access_token), "Content-Type": "application/json"},
+        timeout=20,
+    )
+
+    if not response.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gmail watch setup failed with status {response.status_code}.",
+        )
+
+    return response.json()
+
+
 def send_message(
     access_token: str,
     *,

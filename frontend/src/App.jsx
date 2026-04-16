@@ -813,6 +813,24 @@ function buildTaskFromEmail(email) {
   });
 }
 
+function normaliseBackendApproval(row) {
+  return {
+    id: String(row.id ?? createId('approval')),
+    backendId: String(row.id ?? ''),
+    taskId: null,
+    sourceEmailId: row.sourceEmailId ?? null,
+    senderName: row.senderName ?? 'Unknown sender',
+    senderEmail: row.senderEmail ?? 'unknown@example.com',
+    subject: row.subject ?? 'Untitled',
+    createdAt: row.createdAt ?? Date.now(),
+    tier: row.tier ?? 'Tier 3',
+    why: row.why ?? '',
+    agentResponse: row.agentResponse ?? '',
+    status: row.status ?? 'review',
+    sourceEmail: null,
+  };
+}
+
 function buildApprovalFromEmail(email, taskId) {
   return {
     id: createId('approval'),
@@ -2456,6 +2474,39 @@ function DashboardApp() {
   }, [sessionToken]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadApprovals() {
+      if (!sessionToken) {
+        setApprovals([]);
+        return;
+      }
+
+      try {
+        const response = await fetchProtected('/api/approvals?status=pending');
+
+        if (response.status === 401 || !response.ok) {
+          return;
+        }
+
+        const rows = await response.json();
+
+        if (!cancelled && Array.isArray(rows)) {
+          setApprovals(rows.map((row) => normaliseBackendApproval(row)));
+        }
+      } catch {
+        // silent — approvals just won't restore on this load
+      }
+    }
+
+    void loadApprovals();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken]);
+
+  useEffect(() => {
     function handleOauthMessage(event) {
       if (event.origin !== BACKEND_ORIGIN) {
         return;
@@ -2511,21 +2562,43 @@ function DashboardApp() {
       syncing = true;
 
       try {
-        const response = await fetchProtected('/api/emails');
+        const [emailsResponse, approvalsResponse] = await Promise.all([
+          fetchProtected('/api/emails'),
+          fetchProtected('/api/approvals?status=pending'),
+        ]);
 
-        if (response.status === 401) {
+        if (emailsResponse.status === 401) {
           return;
         }
 
-        if (!response.ok) {
-          throw new Error(`Failed with status ${response.status}`);
+        if (!emailsResponse.ok) {
+          throw new Error(`Failed with status ${emailsResponse.status}`);
         }
 
-        const inbox = await response.json();
+        const inbox = await emailsResponse.json();
 
         if (!cancelled) {
           setRecentEmailsError('');
           reconcileInboxSnapshot(inbox);
+        }
+
+        // Merge any backend-only approvals (created by webhook) into state
+        if (approvalsResponse.ok) {
+          const backendRows = await approvalsResponse.json();
+          if (!cancelled && Array.isArray(backendRows)) {
+            setApprovals((current) => {
+              const existingBackendIds = new Set(
+                current.map((a) => a.backendId).filter(Boolean),
+              );
+              const newRows = backendRows.filter(
+                (row) => !existingBackendIds.has(String(row.id ?? '')),
+              );
+              if (!newRows.length) {
+                return current;
+              }
+              return [...newRows.map((row) => normaliseBackendApproval(row)), ...current];
+            });
+          }
         }
       } catch {
         if (!cancelled) {
@@ -3130,6 +3203,44 @@ function DashboardApp() {
     });
   }
 
+  async function persistApprovalToBackend(approval) {
+    if (!sessionToken) {
+      return;
+    }
+
+    try {
+      const response = await fetchProtected('/api/approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceEmailId: approval.sourceEmailId,
+          senderName: approval.senderName,
+          senderEmail: approval.senderEmail,
+          subject: approval.subject,
+          agentResponse: approval.agentResponse,
+          tier: approval.tier,
+          why: approval.why,
+        }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const persisted = await response.json();
+
+      if (persisted?.id) {
+        setApprovals((current) =>
+          current.map((item) =>
+            item.id === approval.id ? { ...item, backendId: persisted.id } : item,
+          ),
+        );
+      }
+    } catch {
+      // approval stays in state without a backendId — will still work this session
+    }
+  }
+
   async function saveMemoryKey(key, value) {
     if (!sessionToken) {
       return;
@@ -3176,19 +3287,22 @@ function DashboardApp() {
     pulseProcessing(700);
 
     try {
-      if (approval.sourceEmailId && sessionToken) {
-        const response = await fetchProtected(`/api/emails/${approval.sourceEmailId}/action`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'send',
-            reply: approval.agentResponse,
-          }),
-        });
+      if (sessionToken) {
+        let response;
 
-        if (response.status !== 401 && !response.ok) {
+        if (approval.backendId) {
+          response = await fetchProtected(`/api/actions/${approval.backendId}/approve`, {
+            method: 'POST',
+          });
+        } else if (approval.sourceEmailId) {
+          response = await fetchProtected(`/api/emails/${approval.sourceEmailId}/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'send', reply: approval.agentResponse }),
+          });
+        }
+
+        if (response && response.status !== 401 && !response.ok) {
           throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
         }
       }
@@ -3233,6 +3347,14 @@ function DashboardApp() {
       [approval.id]: 'reject',
     }));
 
+    if (approval.backendId && sessionToken) {
+      void fetchProtected(`/api/actions/${approval.backendId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject' }),
+      }).catch(() => {});
+    }
+
     window.setTimeout(() => {
       setApprovals((current) => current.filter((item) => item.id !== approval.id));
       setRemovingApprovals((current) => {
@@ -3275,6 +3397,14 @@ function DashboardApp() {
           : item,
       ),
     );
+
+    if (approval.backendId && sessionToken) {
+      void fetchProtected(`/api/actions/${approval.backendId}/edit`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit', edited_content: trimmed }),
+      }).catch(() => {});
+    }
 
     setMemoryProfile((current) => {
       const currentCount = parseInt(current[MEMORY_KEYS.replyToneEdits] || '0', 10) || 0;
@@ -3403,6 +3533,7 @@ function DashboardApp() {
       ),
     );
     addActivityItem('pending', 'Approval queued', task.name);
+    void persistApprovalToBackend(newApproval);
     requestPanel('approvals');
   }
 
