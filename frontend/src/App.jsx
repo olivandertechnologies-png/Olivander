@@ -2894,6 +2894,15 @@ function DashboardApp() {
       .filter((email) => email.status !== 'actioned');
     const activeIds = new Set(activeEmails.map((email) => email.id));
 
+    // On first load (empty processed set), seed with all current emails so
+    // we don't blast the agent with the entire historical inbox.
+    const isFirstLoad = processedEmailIdsRef.current.size === 0;
+    if (isFirstLoad) {
+      activeIds.forEach((id) => processedEmailIdsRef.current.add(id));
+      persistProcessedEmailIds(processedEmailIdsRef.current);
+      return;
+    }
+
     processedEmailIdsRef.current.forEach((emailId) => {
       if (!activeIds.has(emailId)) {
         processedEmailIdsRef.current.delete(emailId);
