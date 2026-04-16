@@ -210,13 +210,12 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
 
     code_verifier = consume_oauth_state(state)
     flow = create_google_flow(state=state)
-    flow.oauth2session._client.code_verifier = code_verifier
 
     try:
         auth_response = str(request.url)
         if auth_response.startswith("http://") and request.headers.get("x-forwarded-proto") == "https":
             auth_response = "https://" + auth_response[7:]
-        flow.fetch_token(authorization_response=auth_response)
+        flow.fetch_token(authorization_response=auth_response, code_verifier=code_verifier)
     except Exception as error:
         logger.warning("Google OAuth token exchange failed: %s", error)
         raise HTTPException(status_code=400, detail="Google sign-in could not be completed.") from error
