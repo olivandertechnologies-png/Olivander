@@ -1,10 +1,13 @@
 import base64
+import logging
 from email.mime.text import MIMEText
 from email.utils import parseaddr
 from typing import Any
 
 import requests
 from fastapi import HTTPException
+
+logger = logging.getLogger("olivander")
 
 GMAIL_API_BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -78,6 +81,7 @@ def list_recent_messages(
     )
 
     if not response.ok:
+        logger.error("Gmail list messages failed: status=%s body=%s", response.status_code, response.text)
         raise HTTPException(
             status_code=502,
             detail=f"Gmail list messages failed with status {response.status_code}.",
