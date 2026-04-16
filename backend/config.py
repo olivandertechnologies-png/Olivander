@@ -47,6 +47,7 @@ GOOGLE_REDIRECT_URI = get_secret(
 ) or "http://localhost:8000/auth/google/callback"
 SUPABASE_URL = get_secret("SUPABASE_URL")
 SUPABASE_KEY = get_secret("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY = get_secret("SUPABASE_SERVICE_KEY")
 GROQ_API_KEY = get_secret("GROQ_API_KEY")
 JWT_SECRET = get_secret("JWT_SECRET")
 ENCRYPTION_KEY = get_secret("ENCRYPTION_KEY")

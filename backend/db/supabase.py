@@ -3,7 +3,7 @@ from typing import Any
 
 from supabase import Client, create_client
 
-from config import SUPABASE_KEY, SUPABASE_URL
+from config import SUPABASE_KEY, SUPABASE_SERVICE_KEY, SUPABASE_URL
 
 _supabase_client: Client | None = None
 logger = logging.getLogger("olivander")
@@ -36,13 +36,13 @@ def verify_supabase_connection() -> None:
 def get_supabase_client() -> Client:
     global _supabase_client
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise RuntimeError(
-            "Supabase is not configured. Set SUPABASE_URL and SUPABASE_KEY in backend/.env."
+            "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in backend/.env."
         )
 
     if _supabase_client is None:
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
     return _supabase_client
 
