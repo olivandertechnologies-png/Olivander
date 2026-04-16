@@ -1798,7 +1798,19 @@ function TasksPanel({
 }) {
   return (
     <section className="panel-scroll__inner tasks-panel">
-      <div className="panel-heading panel-heading--row panel-heading--actions-only">
+      <div className="panel-heading panel-heading--row">
+        <div className="filter-row" style={{ marginBottom: 0 }}>
+          {TASK_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={`filter-chip ${taskFilter === filter ? 'is-active' : ''}`}
+              onClick={() => onTaskFilterChange(filter)}
+            >
+              {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           className="primary-button"
@@ -1823,19 +1835,6 @@ function TasksPanel({
           </button>
         </form>
       ) : null}
-
-      <div className="filter-row">
-        {TASK_FILTERS.map((filter) => (
-          <button
-            key={filter}
-            type="button"
-            className={`filter-chip ${taskFilter === filter ? 'is-active' : ''}`}
-            onClick={() => onTaskFilterChange(filter)}
-          >
-            {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
-          </button>
-        ))}
-      </div>
 
       {visibleTasks.length ? (
         <div className="task-list">
