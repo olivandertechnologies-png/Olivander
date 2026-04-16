@@ -2,19 +2,18 @@ import datetime
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from agent.draft import generate_agent_plan
+from config import FRONTEND_ORIGIN as _FRONTEND_ORIGIN
 from api.actions import router as actions_router
 from auth.deps import get_current_business
 from auth.google import router as google_auth_router
@@ -35,9 +34,6 @@ os.makedirs("logs", exist_ok=True)
 handler = RotatingFileHandler("logs/app.log", maxBytes=5_000_000, backupCount=3)
 logging.basicConfig(handlers=[handler, logging.StreamHandler()], level=logging.INFO)
 logger = logging.getLogger("olivander")
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
-FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 
 REQUIRED = [
     "GOOGLE_CLIENT_ID",
@@ -53,27 +49,46 @@ for variable in REQUIRED:
     if not os.getenv(variable):
         raise RuntimeError(f"Missing required env var: {variable}")
 
-app = FastAPI(title="Olivander Proto Backend")
+IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("RENDER") is not None
+
+app = FastAPI(
+    title="Olivander Backend",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+_CORS_ORIGINS = list({
+    "http://localhost:5173",
+    "https://olivander.vercel.app",
+    _FRONTEND_ORIGIN,
+})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://olivander.vercel.app",
-    ],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    if IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
 app.include_router(google_auth_router)
 app.include_router(gmail_webhook_router)
 app.include_router(actions_router)
-
-if FRONTEND_ASSETS_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
 
 
 @app.on_event("startup")
@@ -301,6 +316,9 @@ async def action_email(
     }
 
 
+_APPROVAL_STATUSES = {"pending", "approved", "rejected"}
+
+
 @app.get("/api/approvals")
 @limiter.limit("60/minute")
 async def get_approvals(
@@ -309,6 +327,8 @@ async def get_approvals(
     business_id: str = Depends(get_current_business),
 ) -> list[dict[str, Any]]:
     """Get all approvals for the current business."""
+    if status is not None and status not in _APPROVAL_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(_APPROVAL_STATUSES)}")
     return get_approvals_for_business(business_id, status=status)
 
 
@@ -318,26 +338,5 @@ async def healthcheck() -> dict[str, str]:
 
 
 @app.get("/", include_in_schema=False)
-async def serve_frontend_root() -> FileResponse:
-    index_path = FRONTEND_DIST_DIR / "index.html"
-
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Frontend build not found.")
-
-    return FileResponse(index_path)
-
-
-@app.get("/{full_path:path}", include_in_schema=False)
-async def serve_frontend_app(full_path: str) -> FileResponse:
-    if full_path.startswith(("api", "auth", "gmail", "webhook", "docs", "redoc", "openapi.json")):
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    requested_path = FRONTEND_DIST_DIR / full_path
-    if full_path and requested_path.exists() and requested_path.is_file():
-        return FileResponse(requested_path)
-
-    index_path = FRONTEND_DIST_DIR / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Frontend build not found.")
-
-    return FileResponse(index_path)
+async def root() -> JSONResponse:
+    return JSONResponse({"status": "ok", "service": "olivander-api"})
