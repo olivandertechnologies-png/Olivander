@@ -2001,3 +2001,138 @@ textarea::placeholder {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Source email expand ─────────────────────────────── */
+
+.task-source-email {
+  margin-top: 8px;
+  border: 1px solid var(--br);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.task-source-email__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: none;
+  cursor: pointer;
+  gap: 8px;
+  text-align: left;
+}
+
+.task-source-email__toggle:hover {
+  background: var(--surface);
+}
+
+.task-source-email__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-family: var(--font-ui);
+}
+
+.task-source-email__chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--faint);
+  flex-shrink: 0;
+  transition: transform 160ms ease;
+}
+
+.task-source-email__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.task-source-email__body {
+  padding: 8px 10px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid var(--br);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ── Filters panel ───────────────────────────────────── */
+
+.filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filters-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filters-panel__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.filters-panel__hint {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--font-ui);
+  line-height: 1.45;
+}
+
+.filters-panel__textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--br);
+  border-radius: 7px;
+  resize: vertical;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.filters-panel__textarea:focus {
+  outline: 2px solid var(--act);
+  outline-offset: -1px;
+}
+
+.filters-panel__categories {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filters-panel__category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.filters-panel__category input[type='checkbox'] {
+  accent-color: var(--act);
+}
+
+.filters-panel__saved {
+  font-size: 11.5px;
+  color: var(--success, #22c55e);
+  font-family: var(--font-ui);
+}
+
+.filters-panel__save {
+  align-self: flex-start;
+}

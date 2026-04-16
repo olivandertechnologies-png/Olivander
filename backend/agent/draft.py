@@ -8,6 +8,49 @@ from groq_client import get_groq_client
 logger = logging.getLogger("olivander")
 
 
+_CLASSIFICATION_INSTRUCTIONS: dict[str, str] = {
+    "booking_request": """
+This is a BOOKING REQUEST. The customer wants to schedule a session or service.
+Your job is to gather the specific information needed to confirm it.
+Only ask about details NOT already provided in their email:
+- What dates or timeframe works for them?
+- How many people / group size?
+- What type of session or service are they after?
+- Any special requirements?
+Do NOT say "we will check availability and get back to you".
+Ask the questions directly so you can actually book them in.
+Keep it warm and brief — a short greeting, then your questions.
+""",
+    "invoice_query": """
+This is an INVOICE or PAYMENT QUESTION.
+If the answer is in the business context, give it directly.
+If not, tell them exactly what you need from them to resolve it.
+Do not be vague about timelines. One clear paragraph maximum.
+""",
+    "complaint": """
+This is a COMPLAINT. Acknowledge it directly — do not dismiss or deflect.
+State clearly what you will do about it and when.
+Do not over-apologise. Be concise and solution-focused.
+""",
+    "general_reply": """
+This is a simple acknowledgement or general message.
+Reply in one or two sentences only.
+Do not add pricing, next steps, or anything not asked.
+""",
+    "new_lead": """
+This is a NEW ENQUIRY from a potential customer.
+Welcome them briefly, confirm what you offer, and ask one clear question
+to understand what they need. Do not write a marketing pitch.
+""",
+}
+
+_DEFAULT_INSTRUCTION = (
+    "Reply helpfully and directly. "
+    "Ask a clarifying question if key information is missing. "
+    "Keep it brief — no more than 3 sentences unless asking multiple questions."
+)
+
+
 def draft_reply(
     subject: str,
     body: str,
@@ -18,49 +61,52 @@ def draft_reply(
     business_name = business_context.get("business_name") or "Olivander"
     business_type = business_context.get("business_type") or "service business"
     tone = business_context.get("tone") or "warm, professional, brief"
-    pricing_range = business_context.get("pricing_range") or "Not provided"
-    payment_terms = business_context.get("payment_terms") or "Not provided"
+    pricing_range = business_context.get("pricing_range") or ""
+    payment_terms = business_context.get("payment_terms") or ""
+    services = business_context.get("services") or ""
     nz_greeting = bool(business_context.get("nz_greeting"))
     greeting_instruction = (
         'You may use "Kia ora" naturally if it fits the message.'
         if nz_greeting
-        else 'Do not default to "Kia ora" or any forced regional greeting. Open naturally.'
+        else 'Do not use "Kia ora" unless the sender used it first. Open naturally.'
     )
-    general_reply_instruction = (
-        'If the email is simply confirming or acknowledging something, '
-        'reply with one sentence only. Do not add unnecessary information '
-        'about payment, pricing, or next steps unless the original email asks about them.'
-        if classification == "general_reply"
-        else ""
+    classification_guidance = _CLASSIFICATION_INSTRUCTIONS.get(
+        classification, _DEFAULT_INSTRUCTION
     )
+
+    context_lines = []
+    if services:
+        context_lines.append(f"- Services offered: {services}")
+    if pricing_range:
+        context_lines.append(f"- Pricing: {pricing_range}")
+    if payment_terms:
+        context_lines.append(f"- Payment terms: {payment_terms}")
+    business_context_block = "\n".join(context_lines) if context_lines else "- No additional context provided"
 
     prompt = f"""
-You are drafting a professional email reply on behalf of {business_name},
-a {business_type} based in New Zealand.
+You are drafting a reply on behalf of {business_name}, a {business_type} in New Zealand.
 
-Tone: {tone}. Brief, warm, human, and clear. Use New Zealand English.
-Never start with "I hope this email finds you well" or any similar filler.
-Avoid jargon, fluff, or overly polished corporate language.
-Never commit to anything specific without saying "I'll confirm this with you shortly".
+Tone: {tone}. Human, warm, and direct. Use New Zealand English.
+Never start with "I hope this email finds you well" or similar filler.
 {greeting_instruction}
-Sign off with just:
-{business_name}
+Sign off as: {business_name}
 
-The email you are replying to:
+Email you are replying to:
 From: {sender}
 Subject: {subject}
 Body: {body}
 
-This email has been classified as: {classification}
+Classification: {classification}
+
+What to do:
+{classification_guidance.strip()}
 
 Business context:
-- Pricing: {pricing_range}
-- Payment terms: {payment_terms}
+{business_context_block}
 
-Draft a reply of 3-5 sentences maximum unless more is genuinely needed.
-{general_reply_instruction}
-Do not invent details that are not in the original email or business context.
-Reply only with the email body text. No subject line. No headers.
+Write the reply body only. No subject line. No headers.
+Maximum 5 sentences unless you are asking multiple clarifying questions.
+Do not invent details not present in the email or business context.
 """.strip()
 
     client = get_groq_client()
@@ -68,7 +114,7 @@ Reply only with the email body text. No subject line. No headers.
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
-        max_tokens=300,
+        max_tokens=400,
     )
     return (response.choices[0].message.content or "").strip()
 

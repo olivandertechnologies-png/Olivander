@@ -146,6 +146,8 @@ def get_business_context(business_id: str) -> dict[str, Any]:
         "email": business.get("email") or "",
         "location": memory.get("location") or "",
         "services": memory.get("services") or "",
+        "blocked_sender_patterns": memory.get("blocked_sender_patterns") or "noreply,no-reply,do-not-reply,notifications@,mailer-daemon,newsletter,unsubscribe",
+        "active_categories": memory.get("active_categories") or "booking_request,invoice_query,complaint,general_inquiry,new_lead",
     }
 
 
@@ -178,6 +180,7 @@ def build_recent_email_payload(
                 "subject": subject,
                 "body": body,
                 "snippet": body,
+                "full_body": message.get("full_body") or body,
                 "date": message.get("date"),
                 "classification": None,
                 "requiresApproval": False,

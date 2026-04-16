@@ -71,6 +71,8 @@ const MEMORY_KEYS = {
   replyToneEdits: 'reply_tone_edits',
   reschedulePolicy: 'reschedule_policy',
   noShowHandling: 'no_show_handling',
+  blockedSenderPatterns: 'blocked_sender_patterns',
+  activeCategories: 'active_categories',
 };
 const BUSINESS_PROFILE_ROWS = [
   { key: MEMORY_KEYS.businessType, label: 'Business type' },
@@ -86,6 +88,7 @@ const PREFERENCE_ROWS = [
 const SETTINGS_SECTIONS = [
   { id: 'connections', label: 'Connections', icon: <LinkIcon /> },
   { id: 'memory', label: 'Memory', icon: <DatabaseIcon /> },
+  { id: 'filters', label: 'Filters', icon: <FunnelIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <SunIcon /> },
 ];
 
@@ -181,6 +184,20 @@ function persistProcessedEmailIds(ids) {
   }
 
   window.localStorage.setItem(PROCESSED_EMAIL_IDS_KEY, JSON.stringify(Array.from(ids)));
+}
+
+function decodeHtmlEntities(value) {
+  if (typeof value !== 'string' || !value) {
+    return value || '';
+  }
+
+  if (typeof document === 'undefined') {
+    return value;
+  }
+
+  const el = document.createElement('textarea');
+  el.innerHTML = value;
+  return el.value;
 }
 
 function formatRelativeTime(value) {
@@ -750,6 +767,9 @@ function normaliseIncomingEmail(email) {
 
   const agentResponse =
     trimToNull(String(email.agentResponse ?? email.suggestedReply ?? '')) ?? '';
+  const rawBody = trimToNull(String(email.body ?? email.snippet ?? '')) ?? '';
+  const rawFullBody = trimToNull(String(email.full_body ?? email.fullBody ?? rawBody)) ?? rawBody;
+  const rawSubject = trimToNull(String(email.subject ?? '')) ?? 'Untitled message';
 
   return {
     id: String(email.id ?? createId('email')),
@@ -757,8 +777,9 @@ function normaliseIncomingEmail(email) {
       trimToNull(String(email.senderName ?? email.from_name ?? '')) ?? 'Unknown sender',
     senderEmail:
       trimToNull(String(email.senderEmail ?? email.from ?? '')) ?? 'unknown@example.com',
-    subject: trimToNull(String(email.subject ?? '')) ?? 'Untitled message',
-    body: trimToNull(String(email.body ?? email.snippet ?? '')) ?? '',
+    subject: decodeHtmlEntities(rawSubject),
+    body: decodeHtmlEntities(rawBody),
+    fullBody: decodeHtmlEntities(rawFullBody),
     date: email.date ?? null,
     agentResponse,
     requiresApproval: email.requiresApproval ?? Boolean(agentResponse),
@@ -787,6 +808,7 @@ function buildTaskFromEmail(email) {
       senderEmail: email.senderEmail,
       subject: email.subject,
       body: email.body,
+      fullBody: email.fullBody ?? email.body ?? '',
     },
   });
 }
@@ -809,6 +831,32 @@ function buildApprovalFromEmail(email, taskId) {
       senderEmail: email.senderEmail,
       subject: email.subject,
       body: email.body,
+      fullBody: email.fullBody ?? email.body ?? '',
+    },
+  };
+}
+
+function buildApprovalFromTask(task) {
+  const sourceEmail = task.sourceEmail ?? {};
+  const draftContent = trimToNull(task.draftContent ?? task.draftPreview?.text ?? '') ?? '';
+  return {
+    id: createId('approval'),
+    taskId: task.id,
+    sourceEmailId: task.sourceEmailId ?? null,
+    senderName: sourceEmail.senderName ?? 'Unknown sender',
+    senderEmail: sourceEmail.senderEmail ?? 'unknown@example.com',
+    subject: sourceEmail.subject ?? task.name,
+    createdAt: Date.now(),
+    tier: 'Tier 3',
+    why: 'This message changes a customer-facing action and should be reviewed before it goes out.',
+    agentResponse: draftContent,
+    status: 'review',
+    sourceEmail: {
+      senderName: sourceEmail.senderName ?? 'Unknown sender',
+      senderEmail: sourceEmail.senderEmail ?? 'unknown@example.com',
+      subject: sourceEmail.subject ?? task.name,
+      body: sourceEmail.body ?? '',
+      fullBody: sourceEmail.fullBody ?? sourceEmail.body ?? '',
     },
   };
 }
@@ -825,6 +873,8 @@ function createEmptyMemoryProfile() {
     [MEMORY_KEYS.replyToneEdits]: '0',
     [MEMORY_KEYS.reschedulePolicy]: '',
     [MEMORY_KEYS.noShowHandling]: '',
+    [MEMORY_KEYS.blockedSenderPatterns]: 'noreply,no-reply,do-not-reply,notifications@,mailer-daemon,newsletter,unsubscribe',
+    [MEMORY_KEYS.activeCategories]: 'booking_request,invoice_query,complaint,general_inquiry,new_lead',
   };
 }
 
@@ -843,6 +893,14 @@ function normaliseMemoryProfile(payload) {
 
   if (!trimToNull(base[MEMORY_KEYS.replyTone]) && trimToNull(String(payload.tone ?? ''))) {
     base[MEMORY_KEYS.replyTone] = String(payload.tone).trim();
+  }
+
+  if (trimToNull(String(payload.blocked_sender_patterns ?? ''))) {
+    base[MEMORY_KEYS.blockedSenderPatterns] = String(payload.blocked_sender_patterns).trim();
+  }
+
+  if (trimToNull(String(payload.active_categories ?? ''))) {
+    base[MEMORY_KEYS.activeCategories] = String(payload.active_categories).trim();
   }
 
   return base;
@@ -1147,6 +1205,14 @@ function RejectIcon() {
   );
 }
 
+function FunnelIcon() {
+  return (
+    <IconBase>
+      <path d="M2 3h12l-4.5 5.5v4.5l-3-1.5V8.5Z" />
+    </IconBase>
+  );
+}
+
 function GoogleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
@@ -1255,6 +1321,7 @@ function TaskCard({
   const [draftText, setDraftText] = useState(task.draftContent ?? task.draftPreview?.text ?? '');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [isResolvingQuestion, setIsResolvingQuestion] = useState(false);
+  const [isEmailExpanded, setIsEmailExpanded] = useState(false);
   const resolveTimerRef = useRef(null);
   const statusMeta =
     task.status === 'done'
@@ -1370,6 +1437,29 @@ function TaskCard({
         <div className="task-card__body" onClick={(event) => event.stopPropagation()}>
           {showDescription ? <div className="task-description">{task.description}</div> : null}
 
+          {task.sourceEmail ? (
+            <div className="task-source-email">
+              <button
+                type="button"
+                className="task-source-email__toggle"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsEmailExpanded((current) => !current);
+                }}
+              >
+                <span className="task-source-email__label">
+                  {task.sourceEmail.senderName ?? task.sourceEmail.senderEmail ?? 'Original email'}
+                </span>
+                <ChevronIcon className={`task-source-email__chevron ${isEmailExpanded ? 'is-open' : ''}`} />
+              </button>
+              {isEmailExpanded ? (
+                <div className="task-source-email__body">
+                  {trimToNull(task.sourceEmail.fullBody ?? task.sourceEmail.body ?? '') ?? ''}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {isPlanLoading ? (
             <div className="task-plan task-plan--loading">
               <div
@@ -1457,7 +1547,7 @@ function TaskCard({
                         onApproveDraft(task);
                       }}
                     >
-                      Approve &amp; send
+                      Send for approval
                     </button>
                     <button
                       type="button"
@@ -1928,6 +2018,7 @@ function SettingsPanel({
   profile,
   isMemoryLoading,
   memoryError,
+  onSaveMemory,
 }) {
   const showMemoryEmptyState = !isMemoryLoading && !hasMemoryData(profile);
   const nextThemeLabel = theme === 'dark' ? 'Switch to light' : 'Switch to dark';
@@ -2001,6 +2092,13 @@ function SettingsPanel({
           )}
         </section>
       ) : null}
+
+      {activeSection === 'filters' ? (
+        <section className="settings-section">
+          <div className="settings-section__heading">Filters</div>
+          <FiltersPanel profile={profile} onSave={onSaveMemory} />
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -2039,6 +2137,112 @@ function MemoryPanel({ profile, isLoading, memoryError }) {
           );
         })}
       </section>
+    </div>
+  );
+}
+
+const CATEGORY_OPTIONS = [
+  { value: 'booking_request', label: 'Booking requests' },
+  { value: 'invoice_query', label: 'Invoice queries' },
+  { value: 'complaint', label: 'Complaints' },
+  { value: 'general_inquiry', label: 'General inquiries' },
+  { value: 'new_lead', label: 'New leads' },
+];
+
+function FiltersPanel({ profile, onSave }) {
+  const [blockedPatterns, setBlockedPatterns] = useState(
+    profile[MEMORY_KEYS.blockedSenderPatterns] ?? '',
+  );
+  const [activeCategories, setActiveCategories] = useState(
+    (profile[MEMORY_KEYS.activeCategories] ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setBlockedPatterns(profile[MEMORY_KEYS.blockedSenderPatterns] ?? '');
+    setActiveCategories(
+      (profile[MEMORY_KEYS.activeCategories] ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    );
+  }, [profile]);
+
+  function toggleCategory(value) {
+    setActiveCategories((current) =>
+      current.includes(value) ? current.filter((c) => c !== value) : [...current, value],
+    );
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    if (isSaving || !onSave) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError('');
+    setSaved(false);
+
+    try {
+      await onSave(MEMORY_KEYS.blockedSenderPatterns, blockedPatterns);
+      await onSave(MEMORY_KEYS.activeCategories, activeCategories.join(','));
+      setSaved(true);
+    } catch {
+      setSaveError('Could not save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="filters-panel">
+      <div className="filters-panel__section">
+        <div className="filters-panel__label">Blocked sender patterns</div>
+        <div className="filters-panel__hint">
+          Comma-separated substrings. Emails matching any pattern are ignored.
+        </div>
+        <textarea
+          className="filters-panel__textarea"
+          rows={3}
+          value={blockedPatterns}
+          onChange={(event) => {
+            setBlockedPatterns(event.target.value);
+            setSaved(false);
+          }}
+          placeholder="noreply,no-reply,newsletter"
+        />
+      </div>
+
+      <div className="filters-panel__section">
+        <div className="filters-panel__label">Active email categories</div>
+        <div className="filters-panel__hint">
+          Only emails matching these categories will create tasks.
+        </div>
+        <div className="filters-panel__categories">
+          {CATEGORY_OPTIONS.map((option) => (
+            <label key={option.value} className="filters-panel__category">
+              <input
+                type="checkbox"
+                checked={activeCategories.includes(option.value)}
+                onChange={() => toggleCategory(option.value)}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {saveError ? <div className="inline-error">{saveError}</div> : null}
+      {saved ? <div className="filters-panel__saved">Saved.</div> : null}
+
+      <button
+        type="button"
+        className="connection-button is-primary filters-panel__save"
+        disabled={isSaving}
+        onClick={() => void handleSave()}
+      >
+        {isSaving ? 'Saving...' : 'Save filters'}
+      </button>
     </div>
   );
 }
@@ -2883,6 +3087,15 @@ function DashboardApp() {
     }
   }
 
+  function isEmailAllowedByFilters(email) {
+    const patterns = (memoryProfile[MEMORY_KEYS.blockedSenderPatterns] || '')
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter(Boolean);
+    const senderEmail = (email.senderEmail || '').toLowerCase();
+    return !patterns.some((pattern) => senderEmail.includes(pattern));
+  }
+
   function reconcileInboxSnapshot(inboxEmails) {
     if (!Array.isArray(inboxEmails)) {
       return;
@@ -2891,7 +3104,8 @@ function DashboardApp() {
     const activeEmails = inboxEmails
       .map((email) => normaliseIncomingEmail(email))
       .filter(Boolean)
-      .filter((email) => email.status !== 'actioned');
+      .filter((email) => email.status !== 'actioned')
+      .filter((email) => isEmailAllowedByFilters(email));
     const activeIds = new Set(activeEmails.map((email) => email.id));
 
     // On first load (empty processed set), seed with all current emails so
@@ -2914,6 +3128,20 @@ function DashboardApp() {
     activeEmails.forEach((email) => {
       void handleIncomingEmail(email);
     });
+  }
+
+  async function saveMemoryKey(key, value) {
+    if (!sessionToken) {
+      return;
+    }
+
+    await fetchProtected('/api/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value: String(value) }),
+    });
+
+    setMemoryProfile((current) => ({ ...current, [key]: String(value) }));
   }
 
   async function saveReplyToneEditCount(nextCount) {
@@ -3152,26 +3380,30 @@ function DashboardApp() {
     addActivityItem('draft', 'Draft updated', taskName);
   }
 
-  async function handleTaskDraftApprove(task) {
+  function handleTaskDraftApprove(task) {
     const matchingApproval = approvals.find((approval) => approval.taskId === task.id);
 
     if (matchingApproval) {
-      await handleApproveApproval(matchingApproval);
+      requestPanel('approvals');
       return;
     }
 
+    const newApproval = buildApprovalFromTask(task);
+    setApprovals((current) => {
+      if (current.some((item) => item.taskId === task.id)) {
+        return current;
+      }
+      return [newApproval, ...current];
+    });
     setTasks((current) =>
       current.map((item) =>
         item.id === task.id
-          ? {
-              ...item,
-              status: 'done',
-              updatedAt: Date.now(),
-            }
+          ? { ...item, status: 'waiting', updatedAt: Date.now() }
           : item,
       ),
     );
-    addActivityItem('approved', 'Approved', task.name);
+    addActivityItem('pending', 'Approval queued', task.name);
+    requestPanel('approvals');
   }
 
   function handleCancelTask(task) {
@@ -3456,6 +3688,7 @@ function DashboardApp() {
                 profile={memoryProfile}
                 isMemoryLoading={isMemoryLoading}
                 memoryError={memoryError}
+                onSaveMemory={saveMemoryKey}
               />
             ) : null}
           </div>

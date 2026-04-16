@@ -24,13 +24,29 @@ def _get_header_value(headers: list[dict[str, Any]], header_name: str, default: 
     return default
 
 
+def _extract_plain_text(payload: dict[str, Any]) -> str:
+    """Recursively extract plain text from a Gmail MIME payload."""
+    mime_type = payload.get("mimeType", "")
+    body_data = payload.get("body", {}).get("data", "")
+
+    if mime_type == "text/plain" and body_data:
+        try:
+            return base64.urlsafe_b64decode(body_data + "==").decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    for part in payload.get("parts", []):
+        result = _extract_plain_text(part)
+        if result:
+            return result
+
+    return ""
+
+
 def get_message(access_token: str, message_id: str) -> dict[str, Any]:
     response = requests.get(
         f"{GMAIL_API_BASE_URL}/messages/{message_id}",
-        params={
-            "format": "metadata",
-            "metadataHeaders": ["From", "Subject", "Date"],
-        },
+        params={"format": "full"},
         headers=_gmail_headers(access_token),
         timeout=20,
     )
@@ -42,10 +58,12 @@ def get_message(access_token: str, message_id: str) -> dict[str, Any]:
         )
 
     payload = response.json()
-    headers = payload.get("payload", {}).get("headers", [])
+    msg_payload = payload.get("payload", {})
+    headers = msg_payload.get("headers", [])
     sender_name, sender_email = parseaddr(
         _get_header_value(headers, "From", "Unknown Sender <unknown@example.com>")
     )
+    full_body = _extract_plain_text(msg_payload).strip()
 
     return {
         "id": str(payload.get("id", message_id)),
@@ -53,6 +71,7 @@ def get_message(access_token: str, message_id: str) -> dict[str, Any]:
         "from_name": sender_name or sender_email or "Unknown Sender",
         "subject": _get_header_value(headers, "Subject", "Untitled Email"),
         "snippet": payload.get("snippet", ""),
+        "full_body": full_body or payload.get("snippet", ""),
         "date": _get_header_value(headers, "Date", payload.get("internalDate")),
         "thread_id": payload.get("threadId"),
     }
