@@ -123,6 +123,10 @@ def _refresh_access_token(business: dict[str, Any]) -> str:
     )
 
     if not response.ok:
+        import logging
+        logging.getLogger("olivander").error(
+            "Google token refresh failed: status=%s body=%s", response.status_code, response.text
+        )
         raise HTTPException(status_code=502, detail="Google token refresh failed.")
 
     payload = response.json()
