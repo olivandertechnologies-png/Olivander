@@ -1,7 +1,5 @@
 from groq_client import get_groq_client
 
-client = get_groq_client()
-
 _VALID_LABELS = {
     "booking_request",
     "invoice_query",
@@ -33,6 +31,7 @@ Body: {body}
 Reply with ONLY the category name. No explanation. No punctuation.
 """.strip()
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],

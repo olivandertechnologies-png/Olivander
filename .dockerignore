@@ -3,6 +3,7 @@
 output
 backend/.env
 backend/.venv
+backend/venv
 backend/__pycache__
 backend/.pytest_cache
 backend/logs

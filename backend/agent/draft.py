@@ -6,7 +6,6 @@ from agent.classify import classify_email
 from groq_client import get_groq_client
 
 logger = logging.getLogger("olivander")
-client = get_groq_client()
 
 
 def draft_reply(
@@ -64,6 +63,7 @@ Do not invent details that are not in the original email or business context.
 Reply only with the email body text. No subject line. No headers.
 """.strip()
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
@@ -427,6 +427,7 @@ Rules:
 - Do not wrap the JSON in markdown fences."""
 
     try:
+        client = get_groq_client()
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],

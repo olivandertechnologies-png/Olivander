@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import logging
 import os
 import secrets
@@ -88,13 +90,25 @@ def create_session_token(business_id: str, email: str, contact_name: str | None 
     return jwt.encode(payload, os.getenv("JWT_SECRET"), algorithm="HS256")
 
 
-def store_oauth_state(state: str) -> None:
+def generate_pkce_pair() -> tuple[str, str]:
+    """Returns (code_verifier, code_challenge) for PKCE OAuth flow."""
+    code_verifier = secrets.token_urlsafe(96)
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    return code_verifier, code_challenge
+
+
+def store_oauth_state(state: str, code_verifier: str) -> None:
     (
         get_supabase_client()
         .table("oauth_states")
         .upsert(
             {
                 "state": state,
+                "code_verifier": code_verifier,
                 "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
             }
         )
@@ -102,12 +116,13 @@ def store_oauth_state(state: str) -> None:
     )
 
 
-def consume_oauth_state(state: str) -> None:
+def consume_oauth_state(state: str) -> str:
+    """Validates and deletes the state, returning the stored code_verifier."""
     now = datetime.now(timezone.utc).isoformat()
     response = (
         get_supabase_client()
         .table("oauth_states")
-        .select("state, expires_at")
+        .select("state, expires_at, code_verifier")
         .eq("state", state)
         .gt("expires_at", now)
         .limit(1)
@@ -118,6 +133,8 @@ def consume_oauth_state(state: str) -> None:
     if not rows:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
+    code_verifier = rows[0].get("code_verifier") or ""
+
     (
         get_supabase_client()
         .table("oauth_states")
@@ -125,6 +142,8 @@ def consume_oauth_state(state: str) -> None:
         .eq("state", state)
         .execute()
     )
+
+    return code_verifier
 
 
 def fetch_google_userinfo(access_token: str) -> dict[str, Any]:
@@ -149,12 +168,15 @@ def fetch_google_userinfo(access_token: str) -> dict[str, Any]:
 @limiter.limit("10/minute")
 async def auth_google(request: Request) -> JSONResponse:
     state = secrets.token_urlsafe(32)
-    store_oauth_state(state)
+    code_verifier, code_challenge = generate_pkce_pair()
+    store_oauth_state(state, code_verifier)
     flow = create_google_flow(state=state)
     authorization_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
+        code_challenge=code_challenge,
+        code_challenge_method="S256",
     )
     response = JSONResponse({"url": authorization_url})
     frontend_origin = normalise_origin(request.headers.get("origin")) or normalise_origin(
@@ -186,11 +208,15 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
     if not state:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
-    consume_oauth_state(state)
+    code_verifier = consume_oauth_state(state)
     flow = create_google_flow(state=state)
+    flow.oauth2session._client.code_verifier = code_verifier
 
     try:
-        flow.fetch_token(authorization_response=str(request.url))
+        auth_response = str(request.url)
+        if auth_response.startswith("http://") and request.headers.get("x-forwarded-proto") == "https":
+            auth_response = "https://" + auth_response[7:]
+        flow.fetch_token(authorization_response=auth_response)
     except Exception as error:
         logger.warning("Google OAuth token exchange failed: %s", error)
         raise HTTPException(status_code=400, detail="Google sign-in could not be completed.") from error

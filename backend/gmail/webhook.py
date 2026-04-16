@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from agent.classify import classify_email
 from agent.draft import draft_reply
@@ -136,11 +136,14 @@ async def _process_gmail_notification(gmail_address: str, history_id: str) -> No
 
 @router.post("/webhook/gmail")
 @limiter.limit("100/minute")
-async def gmail_push_webhook(request: Request, token: str = Query(default="")) -> dict[str, Any]:
-    # Configure the Pub/Sub push subscription URL as /webhook/gmail?token=WEBHOOK_SECRET
-    expected = os.getenv("WEBHOOK_SECRET")
+async def gmail_push_webhook(request: Request) -> dict[str, Any]:
+    # Verify secret via Authorization header: Bearer <WEBHOOK_SECRET>
+    # Set this in your Pub/Sub push subscription as an Authorization header.
+    expected = os.getenv("WEBHOOK_SECRET", "")
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
 
-    if not token or not hmac.compare_digest(token, expected):
+    if not token or not expected or not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     payload = await request.json()

@@ -33,4 +33,7 @@ def get_current_business(
         raise HTTPException(status_code=401, detail="Invalid session")
 
     payload = decode_session_token(credentials.credentials)
-    return payload["business_id"]
+    business_id = payload.get("business_id")
+    if not business_id or not isinstance(business_id, str):
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return business_id

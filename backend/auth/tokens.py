@@ -15,7 +15,17 @@ from db.supabase import (
 )
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-_fernet = Fernet(os.getenv("ENCRYPTION_KEY").encode())
+_fernet: Fernet | None = None
+
+
+def _get_fernet() -> Fernet:
+    global _fernet
+    if _fernet is None:
+        key = os.getenv("ENCRYPTION_KEY")
+        if not key:
+            raise RuntimeError("ENCRYPTION_KEY is not set")
+        _fernet = Fernet(key.encode())
+    return _fernet
 
 
 def _parse_timestamp(value: str | None) -> datetime | None:
@@ -38,14 +48,14 @@ def _encrypt(value: str | None) -> str | None:
     if not value:
         return None
 
-    return _fernet.encrypt(value.encode()).decode()
+    return _get_fernet().encrypt(value.encode()).decode()
 
 
 def _decrypt(value: str | None) -> str | None:
     if not value:
         return None
 
-    return _fernet.decrypt(value.encode()).decode()
+    return _get_fernet().decrypt(value.encode()).decode()
 
 
 def _get_decrypted_tokens(business: dict[str, Any]) -> tuple[str | None, str | None]:
