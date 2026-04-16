@@ -1,3 +1,5 @@
+.secrets/
+
 # Environment
 .env
 .env.*
@@ -9,6 +11,9 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+*.db
+.pytest_cache/
+backend/logs/
 
 # Node
 node_modules/
@@ -16,8 +21,7 @@ dist/
 .DS_Store
 
 # Logs
-backend/logs/
+*.log
 
-# Playwright
+# Build artifacts
 .playwright-cli/
-*.db
