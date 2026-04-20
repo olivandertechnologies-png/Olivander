@@ -260,13 +260,11 @@ export function GoogleIcon() {
 
 export function XeroIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
-      <circle cx="14" cy="14" r="13" fill="#13B5EA" />
+    <svg aria-hidden="true" viewBox="0 0 100 100" className="connection-logo">
+      <circle cx="50" cy="50" r="50" fill="#13B5EA" />
       <path
-        d="M10.2 14l3.8-3.8M14 10.2l3.8 3.8M17.8 14l-3.8 3.8M14 17.8l-3.8-3.8"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
+        fill="white"
+        d="M74.9 25.1c-1.5-1.5-3.9-1.5-5.4 0L50 44.6 30.5 25.1c-1.5-1.5-3.9-1.5-5.4 0s-1.5 3.9 0 5.4L44.6 50 25.1 69.5c-1.5 1.5-1.5 3.9 0 5.4.7.7 1.7 1.1 2.7 1.1s2-.4 2.7-1.1L50 55.4l19.5 19.5c.7.7 1.7 1.1 2.7 1.1s2-.4 2.7-1.1c1.5-1.5 1.5-3.9 0-5.4L55.4 50l19.5-19.5c1.5-1.5 1.5-3.9 0-5.4z"
       />
     </svg>
   );
