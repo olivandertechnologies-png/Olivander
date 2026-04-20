@@ -30,10 +30,7 @@
       padding: 48px 24px 96px;
     }
 
-    .wrap {
-      max-width: 680px;
-      margin: 0 auto;
-    }
+    .wrap { max-width: 680px; margin: 0 auto; }
 
     .wordmark {
       display: inline-flex;
@@ -44,7 +41,7 @@
       margin-bottom: 40px;
       text-decoration: none;
     }
-    .wordmark__o   { color: var(--act); }
+    .wordmark__o    { color: var(--act); }
     .wordmark__rest { color: var(--ink); }
 
     h1 {
@@ -55,11 +52,7 @@
       margin-bottom: 8px;
     }
 
-    .meta {
-      font-size: 13px;
-      color: var(--faint);
-      margin-bottom: 48px;
-    }
+    .meta { font-size: 13px; color: var(--faint); margin-bottom: 48px; }
 
     h2 {
       font-family: 'DM Sans', sans-serif;
@@ -71,15 +64,8 @@
 
     p { margin-bottom: 16px; color: var(--ink2); }
 
-    ul {
-      padding-left: 20px;
-      margin-bottom: 16px;
-    }
-
-    li {
-      margin-bottom: 6px;
-      color: var(--ink2);
-    }
+    ul { padding-left: 20px; margin-bottom: 16px; }
+    li { margin-bottom: 6px; color: var(--ink2); }
 
     a { color: var(--act); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -94,17 +80,13 @@
       color: var(--muted);
     }
 
-    hr {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 48px 0 0;
+    .callout--required {
+      border-left: 3px solid var(--act);
     }
 
-    .footer {
-      margin-top: 32px;
-      font-size: 13px;
-      color: var(--faint);
-    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 48px 0 0; }
+
+    .footer { margin-top: 32px; font-size: 13px; color: var(--faint); }
   </style>
 </head>
 <body>
@@ -130,6 +112,7 @@
       <li><strong>Xero</strong> — contacts and invoice data, to create and chase invoices on your behalf</li>
     </ul>
     <p>We also store the business information you provide during onboarding (business name, location, pricing, policies) and a log of all actions Olivander has taken or queued.</p>
+    <p>Your browser's local storage is used to hold your session token and UI preferences (e.g. theme). This data stays on your device and is not transmitted to our servers beyond authentication.</p>
 
     <h2>2. How we use it</h2>
     <ul>
@@ -138,25 +121,33 @@
       <li>Create invoices and send follow-up chasers after you approve them</li>
       <li>Remember your business preferences so responses stay consistent</li>
     </ul>
-    <p>We do not use your data for advertising, analytics products, or to train AI models beyond what is needed to respond to your requests.</p>
+    <p>We do not use your data for advertising, analytics products, or to train AI models. We take reasonable steps to ensure information we hold about you is accurate and up to date.</p>
 
-    <h2>3. AI processing disclosure</h2>
+    <h2>3. AI processing and Google API data use</h2>
     <p>Email content, calendar details, and business memory are sent to <strong>Groq</strong> (running Meta's Llama 3.3 70B model) to generate classifications and draft text. Groq processes this data under their own privacy policy. We send only what's needed for each operation — we do not bulk-export your inbox to any AI service.</p>
     <p>All AI-generated outputs are drafts. Nothing is sent or actioned until you approve it.</p>
 
-    <h2>4. Who else sees your data</h2>
+    <div class="callout callout--required">
+      <strong>Google API Limited Use:</strong> Olivander's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements. In plain terms: Gmail and Calendar data is used only to provide the features described in this policy. It is not used for advertising, not transferred to third parties for their own use, and no human at Olivander reads your email content unless you explicitly request support and provide access.
+    </div>
+
+    <h2>4. Third-party data in emails</h2>
+    <p>When your customers and contacts email you, their messages may contain personal information about them (names, phone numbers, booking details). This content is processed by Groq as part of drafting replies on your behalf. By using Olivander, you represent that you have a lawful basis for processing your contacts' information in this way, consistent with your own privacy obligations to them.</p>
+
+    <h2>5. Who else sees your data</h2>
     <p>We use the following third-party services to operate Olivander:</p>
     <ul>
-      <li><strong>Supabase</strong> — database hosting (PostgreSQL, hosted in AWS ap-southeast-2)</li>
+      <li><strong>Supabase</strong> — database hosting (PostgreSQL, hosted in AWS ap-southeast-2, Sydney)</li>
       <li><strong>Google</strong> — Gmail and Calendar API access</li>
       <li><strong>Xero</strong> — accounting API access</li>
-      <li><strong>Groq</strong> — AI inference for email classification and drafting</li>
-      <li><strong>Render</strong> — backend API hosting</li>
-      <li><strong>Vercel</strong> — frontend hosting</li>
+      <li><strong>Groq</strong> — AI inference (United States)</li>
+      <li><strong>Render</strong> — backend API hosting (United States)</li>
+      <li><strong>Vercel</strong> — frontend hosting (United States)</li>
     </ul>
     <p>We do not sell data to any third party. We do not share data with marketers, data brokers, or analytics services.</p>
+    <p><strong>Cross-border transfers:</strong> Some of the services above are based in the United States. Under Information Privacy Principle 12 of the NZ Privacy Act 2020, we transfer personal information overseas where it is necessary to perform the service you have contracted us to provide, and we take reasonable steps to ensure these overseas recipients handle your information in a way that is consistent with the Privacy Act. By using Olivander you acknowledge and consent to these transfers.</p>
 
-    <h2>5. Data retention</h2>
+    <h2>6. Data retention</h2>
     <ul>
       <li>Email content used for drafting is not stored long-term — it's fetched, processed, and discarded</li>
       <li>Approval records and activity logs are retained for as long as your account is active</li>
@@ -164,20 +155,24 @@
       <li>On account deletion, all data is removed within 30 days</li>
     </ul>
 
-    <h2>6. Security</h2>
+    <h2>7. Security</h2>
     <p>OAuth tokens are encrypted at rest using AES-256. All API communication is over HTTPS. Row-level security is enforced at the database layer — one business cannot access another's data.</p>
 
-    <h2>7. Your rights (NZ Privacy Act 2020)</h2>
+    <h2>8. Privacy breach notification</h2>
+    <p>If we become aware of a privacy breach that is likely to cause serious harm to any affected individual, we will notify the NZ Privacy Commissioner and the affected individuals as soon as practicable, in accordance with Part 6 of the Privacy Act 2020. We will also take immediate steps to contain the breach and assess its scope.</p>
+
+    <h2>9. Your rights (NZ Privacy Act 2020)</h2>
     <p>You have the right to:</p>
     <ul>
       <li>Access any personal information we hold about you</li>
       <li>Request correction of inaccurate information</li>
       <li>Request deletion of your data</li>
       <li>Withdraw consent and close your account at any time</li>
+      <li>Make a complaint to the NZ Privacy Commissioner at <a href="https://www.privacy.org.nz" target="_blank" rel="noopener noreferrer">privacy.org.nz</a> if you believe we have breached the Privacy Act</li>
     </ul>
-    <p>To exercise any of these rights, email us at <a href="mailto:ollieblakey85@gmail.com">ollieblakey85@gmail.com</a>.</p>
+    <p>To exercise any of these rights, email us at <a href="mailto:ollieblakey85@gmail.com">ollieblakey85@gmail.com</a>. We will respond within 20 working days as required by the Act.</p>
 
-    <h2>8. Changes to this policy</h2>
+    <h2>10. Changes to this policy</h2>
     <p>If we make material changes, we'll notify you by email before they take effect. The date at the top of this page always reflects the current version.</p>
 
     <hr />
