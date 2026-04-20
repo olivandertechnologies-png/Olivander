@@ -65,6 +65,22 @@ const CHAT_QUESTIONS = [
 let _msgId = 0;
 function nextId() { return ++_msgId; }
 
+// Brief reactions shown after each answer before the next question
+const REACTIONS = {
+  business_name:     (a) => `${a} — love it.`,
+  location:          ()  => 'Good to know.',
+  reply_tone:        ()  => "Got it, I'll keep that in mind.",
+  pricing_range:     ()  => 'Helpful.',
+  payment_terms:     ()  => 'Noted.',
+  gst_registered:    (a) => a === 'Yes' ? "I'll include GST on invoices." : 'No GST — noted.',
+  reschedule_policy: ()  => 'Makes sense.',
+  no_show_handling:  ()  => 'Good to know.',
+};
+
+function getAck(key, answer) {
+  return REACTIONS[key]?.(answer) ?? null;
+}
+
 export default function OnboardingWizard({
   onComplete,
   onSaveMemory,
@@ -165,7 +181,16 @@ export default function OnboardingWizard({
       setIsSaving(false);
     }
 
-    advanceQuestion(questionIndex);
+    const ack = q?.key ? getAck(q.key, text) : null;
+    if (ack) {
+      // Show ack bubble, then a beat, then typing → next question
+      setTimeout(() => {
+        addAiMessage(ack);
+        setTimeout(() => advanceQuestion(questionIndex), 250);
+      }, 350);
+    } else {
+      advanceQuestion(questionIndex);
+    }
   }
 
   function handleSkip() {

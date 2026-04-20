@@ -2256,13 +2256,16 @@ textarea::placeholder {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   animation: ob-step-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ── Connect / Launch section ── */
 
 .onboarding-section {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -2297,7 +2300,8 @@ textarea::placeholder {
 /* ── Chat interface ── */
 
 .ob-chat {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -2310,8 +2314,15 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 2px 0 12px;
+  padding: 4px 2px 12px;
   scroll-behavior: smooth;
+}
+
+.ob-chat__messages::-webkit-scrollbar { width: 3px; }
+.ob-chat__messages::-webkit-scrollbar-track { background: transparent; }
+.ob-chat__messages::-webkit-scrollbar-thumb {
+  background: var(--cream-border, #DED9D0);
+  border-radius: 2px;
 }
 
 /* Bubbles */
