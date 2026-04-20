@@ -817,7 +817,6 @@ export default function DashboardApp() {
             </span>
             <span className="profile-trigger__copy">
               <span className="profile-trigger__name">{businessName}</span>
-              <span className="profile-trigger__plan">{profileMeta}</span>
             </span>
           </button>
         </div>
