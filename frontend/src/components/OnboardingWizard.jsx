@@ -410,6 +410,14 @@ export default function OnboardingWizard({
             </button>
           )}
         </div>
+
+        {/* Legal links */}
+        <p className="onboarding-legal">
+          By continuing you agree to our{' '}
+          <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+          {' '}and{' '}
+          <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+        </p>
       </div>
     </div>
   );

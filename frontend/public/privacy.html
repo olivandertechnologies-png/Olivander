@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Olivander</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #F5F0E8;
+      --card:    #FDFAF4;
+      --act:     #5A4FD0;
+      --ink:     #2C3240;
+      --ink2:    #3D4452;
+      --muted:   #5C6475;
+      --faint:   #8C93A4;
+      --border:  #DED9D0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink2);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      padding: 48px 24px 96px;
+    }
+
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .wordmark {
+      display: inline-flex;
+      font-family: 'Fraunces', serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 40px;
+      text-decoration: none;
+    }
+    .wordmark__o   { color: var(--act); }
+    .wordmark__rest { color: var(--ink); }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .meta {
+      font-size: 13px;
+      color: var(--faint);
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--ink);
+      margin: 40px 0 12px;
+    }
+
+    p { margin-bottom: 16px; color: var(--ink2); }
+
+    ul {
+      padding-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 6px;
+      color: var(--ink2);
+    }
+
+    a { color: var(--act); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .callout {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin: 24px 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 48px 0 0;
+    }
+
+    .footer {
+      margin-top: 32px;
+      font-size: 13px;
+      color: var(--faint);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a href="/" class="wordmark">
+      <span class="wordmark__o">O</span><span class="wordmark__rest">livander</span>
+    </a>
+
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated: 21 April 2026 &nbsp;·&nbsp; Applies to olivander.vercel.app</p>
+
+    <p>Olivander is an AI operations layer for small service businesses in New Zealand. This policy explains what data we collect, how we use it, and your rights under the New Zealand Privacy Act 2020.</p>
+
+    <div class="callout">
+      The short version: we access your Gmail, Calendar, and Xero accounts only to do the work you've asked us to do. We never read emails to sell ads, train our own models, or share data with third parties beyond the services listed below. Nothing is sent or actioned without your explicit approval.
+    </div>
+
+    <h2>1. What we collect</h2>
+    <p>When you connect your accounts, we access:</p>
+    <ul>
+      <li><strong>Gmail</strong> — inbound email content and thread history, to classify messages and draft replies</li>
+      <li><strong>Google Calendar</strong> — your event list and availability, to handle booking requests</li>
+      <li><strong>Xero</strong> — contacts and invoice data, to create and chase invoices on your behalf</li>
+    </ul>
+    <p>We also store the business information you provide during onboarding (business name, location, pricing, policies) and a log of all actions Olivander has taken or queued.</p>
+
+    <h2>2. How we use it</h2>
+    <ul>
+      <li>Classify inbound emails and identify what response or action is needed</li>
+      <li>Draft replies and propose calendar slots for your review</li>
+      <li>Create invoices and send follow-up chasers after you approve them</li>
+      <li>Remember your business preferences so responses stay consistent</li>
+    </ul>
+    <p>We do not use your data for advertising, analytics products, or to train AI models beyond what is needed to respond to your requests.</p>
+
+    <h2>3. AI processing disclosure</h2>
+    <p>Email content, calendar details, and business memory are sent to <strong>Groq</strong> (running Meta's Llama 3.3 70B model) to generate classifications and draft text. Groq processes this data under their own privacy policy. We send only what's needed for each operation — we do not bulk-export your inbox to any AI service.</p>
+    <p>All AI-generated outputs are drafts. Nothing is sent or actioned until you approve it.</p>
+
+    <h2>4. Who else sees your data</h2>
+    <p>We use the following third-party services to operate Olivander:</p>
+    <ul>
+      <li><strong>Supabase</strong> — database hosting (PostgreSQL, hosted in AWS ap-southeast-2)</li>
+      <li><strong>Google</strong> — Gmail and Calendar API access</li>
+      <li><strong>Xero</strong> — accounting API access</li>
+      <li><strong>Groq</strong> — AI inference for email classification and drafting</li>
+      <li><strong>Render</strong> — backend API hosting</li>
+      <li><strong>Vercel</strong> — frontend hosting</li>
+    </ul>
+    <p>We do not sell data to any third party. We do not share data with marketers, data brokers, or analytics services.</p>
+
+    <h2>5. Data retention</h2>
+    <ul>
+      <li>Email content used for drafting is not stored long-term — it's fetched, processed, and discarded</li>
+      <li>Approval records and activity logs are retained for as long as your account is active</li>
+      <li>Business memory (your preferences, policies) is retained and can be edited or deleted by you at any time via the Memory panel</li>
+      <li>On account deletion, all data is removed within 30 days</li>
+    </ul>
+
+    <h2>6. Security</h2>
+    <p>OAuth tokens are encrypted at rest using AES-256. All API communication is over HTTPS. Row-level security is enforced at the database layer — one business cannot access another's data.</p>
+
+    <h2>7. Your rights (NZ Privacy Act 2020)</h2>
+    <p>You have the right to:</p>
+    <ul>
+      <li>Access any personal information we hold about you</li>
+      <li>Request correction of inaccurate information</li>
+      <li>Request deletion of your data</li>
+      <li>Withdraw consent and close your account at any time</li>
+    </ul>
+    <p>To exercise any of these rights, email us at <a href="mailto:ollieblakey85@gmail.com">ollieblakey85@gmail.com</a>.</p>
+
+    <h2>8. Changes to this policy</h2>
+    <p>If we make material changes, we'll notify you by email before they take effect. The date at the top of this page always reflects the current version.</p>
+
+    <hr />
+    <div class="footer">
+      <p>Questions? Email <a href="mailto:ollieblakey85@gmail.com">ollieblakey85@gmail.com</a></p>
+      <p style="margin-top:8px"><a href="/terms.html">Terms of Service</a> &nbsp;·&nbsp; <a href="/">Back to Olivander</a></p>
+    </div>
+  </div>
+</body>
+</html>
