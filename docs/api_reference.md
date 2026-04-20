@@ -2,7 +2,7 @@
 
 ## Base URL
 - Local: `http://localhost:8000`
-- Production: `https://api.olivander.app` (Railway)
+- Production: `https://olivander-api.onrender.com` (Render)
 
 ## Authentication
 All endpoints require JWT token in header:

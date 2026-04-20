@@ -232,6 +232,83 @@ def log_activity(
     )
 
 
+def claim_approval(approval_id: str, new_status: str, when_ts: str) -> bool:
+    """Atomically claim a pending approval by setting its status.
+
+    Only succeeds if the current status is 'pending'. Returns True if the
+    claim succeeded (row was updated), False if it was already handled.
+    This prevents duplicate actions from concurrent email-tap requests.
+    """
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .update({"status": new_status, "when_ts": when_ts})
+        .eq("id", approval_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    return bool(response.data)
+
+
+def update_xero_tokens(
+    business_id: str,
+    access_token: str | None,
+    refresh_token: str | None,
+    expiry: str | None,
+    tenant_id: str | None,
+) -> None:
+    """Store encrypted Xero tokens on the business row."""
+    (
+        get_supabase_client()
+        .table("businesses")
+        .update(
+            {
+                "xero_access_token": access_token,
+                "xero_refresh_token": refresh_token,
+                "xero_token_expiry": expiry,
+                "xero_tenant_id": tenant_id,
+            }
+        )
+        .eq("id", business_id)
+        .execute()
+    )
+
+
+def set_onboarded(business_id: str) -> None:
+    """Mark a business as having completed onboarding."""
+    (
+        get_supabase_client()
+        .table("businesses")
+        .update({"onboarded": True})
+        .eq("id", business_id)
+        .execute()
+    )
+
+
+def log_ai_usage(
+    business_id: str | None,
+    model: str,
+    operation: str,
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float,
+) -> None:
+    """Log an AI model call to the ai_usage table for cost tracking."""
+    (
+        get_supabase_client()
+        .table("ai_usage")
+        .insert({
+            "business_id": business_id,
+            "model": model,
+            "operation": operation,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": cost_usd,
+        })
+        .execute()
+    )
+
+
 def get_approvals_for_business(
     business_id: str,
     status: str | None = None,
@@ -249,4 +326,90 @@ def get_approvals_for_business(
         query = query.eq("status", status)
 
     response = query.execute()
+    return response.data or []
+
+
+# ---------------------------------------------------------------------------
+# Job queue
+# ---------------------------------------------------------------------------
+
+def enqueue_job(
+    job_type: str,
+    payload: dict[str, Any],
+    run_at: str,
+    business_id: str | None = None,
+    max_attempts: int = 3,
+) -> dict[str, Any] | None:
+    """Insert a job into the job_queue table."""
+    row: dict[str, Any] = {
+        "job_type": job_type,
+        "payload": payload,
+        "run_at": run_at,
+        "status": "pending",
+        "attempts": 0,
+        "max_attempts": max_attempts,
+    }
+    if business_id:
+        row["business_id"] = business_id
+
+    response = (
+        get_supabase_client()
+        .table("job_queue")
+        .insert(row)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def claim_job(job_id: str) -> bool:
+    """Atomically set a pending job to running. Returns True if claimed."""
+    response = (
+        get_supabase_client()
+        .table("job_queue")
+        .update({"status": "running"})
+        .eq("id", job_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    return bool(response.data)
+
+
+def complete_job(job_id: str) -> None:
+    """Mark a job as completed."""
+    (
+        get_supabase_client()
+        .table("job_queue")
+        .update({"status": "completed"})
+        .eq("id", job_id)
+        .execute()
+    )
+
+
+def fail_job(job_id: str, error: str, attempts: int, max_attempts: int) -> None:
+    """Mark a job as failed or return it to pending for retry."""
+    new_status = "failed" if attempts >= max_attempts else "pending"
+    (
+        get_supabase_client()
+        .table("job_queue")
+        .update({"status": new_status, "attempts": attempts, "error": error[:2000]})
+        .eq("id", job_id)
+        .execute()
+    )
+
+
+def get_due_jobs(limit: int = 20) -> list[dict[str, Any]]:
+    """Fetch pending jobs that are due to run, ordered by run_at."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    response = (
+        get_supabase_client()
+        .table("job_queue")
+        .select("*")
+        .eq("status", "pending")
+        .lte("run_at", now)
+        .order("run_at")
+        .limit(limit)
+        .execute()
+    )
     return response.data or []

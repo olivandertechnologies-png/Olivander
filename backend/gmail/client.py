@@ -1,5 +1,6 @@
 import base64
 import logging
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parseaddr
 from typing import Any
@@ -112,10 +113,14 @@ def list_recent_messages(
 
 
 def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
-    """Get all messages in a thread."""
+    """Get all messages in a thread with full body text.
+
+    Uses format=full so _extract_plain_text can pull actual message bodies,
+    not just snippets. Required for coherent reply generation.
+    """
     response = requests.get(
         f"{GMAIL_API_BASE_URL}/threads/{thread_id}",
-        params={"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]},
+        params={"format": "full"},
         headers=_gmail_headers(access_token),
         timeout=20,
     )
@@ -130,10 +135,12 @@ def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
     messages = []
 
     for msg_data in thread_data.get("messages", []):
-        headers = msg_data.get("payload", {}).get("headers", [])
+        msg_payload = msg_data.get("payload", {})
+        headers = msg_payload.get("headers", [])
         sender_name, sender_email = parseaddr(
             _get_header_value(headers, "From", "Unknown Sender <unknown@example.com>")
         )
+        full_body = _extract_plain_text(msg_payload).strip()
 
         messages.append({
             "id": msg_data.get("id"),
@@ -141,10 +148,48 @@ def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
             "from_name": sender_name or sender_email or "Unknown Sender",
             "subject": _get_header_value(headers, "Subject", ""),
             "snippet": msg_data.get("snippet", ""),
+            "body": full_body or msg_data.get("snippet", ""),
             "date": _get_header_value(headers, "Date", ""),
         })
 
     return messages
+
+
+def send_html_message(
+    access_token: str,
+    *,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+    thread_id: str | None = None,
+) -> dict[str, Any]:
+    """Send an HTML email (with plain-text fallback) via Gmail API."""
+    message = MIMEMultipart("alternative")
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.attach(MIMEText(text_body, "plain"))
+    message.attach(MIMEText(html_body, "html"))
+    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    payload: dict[str, Any] = {"raw": encoded_message}
+    if thread_id:
+        payload["threadId"] = thread_id
+
+    response = requests.post(
+        f"{GMAIL_API_BASE_URL}/messages/send",
+        json=payload,
+        headers={**_gmail_headers(access_token), "Content-Type": "application/json"},
+        timeout=20,
+    )
+
+    if not response.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gmail send failed with status {response.status_code}.",
+        )
+
+    return response.json()
 
 
 def setup_gmail_watch(access_token: str, topic_name: str) -> dict[str, Any]:

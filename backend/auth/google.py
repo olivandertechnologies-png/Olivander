@@ -245,6 +245,14 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
         try:
             setup_gmail_watch(access_token, pubsub_topic)
             logger.info("Gmail watch registered for %s", userinfo["email"])
+            # Enqueue renewal 6 days from now (watches expire after 7 days)
+            from jobs.queue import enqueue_job
+            enqueue_job(
+                job_type="renew_gmail_watch",
+                payload={"business_id": str(business["id"])},
+                delay_seconds=6 * 24 * 3600,
+                business_id=str(business["id"]),
+            )
         except Exception as watch_error:
             logger.warning("Gmail watch setup failed (non-fatal): %s", watch_error)
 

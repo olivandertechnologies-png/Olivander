@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from agent.classify import classify_email
-from groq_client import get_groq_client
+from core.ai import get_ai_provider
 
 logger = logging.getLogger("olivander")
 
@@ -11,17 +11,12 @@ logger = logging.getLogger("olivander")
 _CLASSIFICATION_INSTRUCTIONS: dict[str, str] = {
     "booking_request": """
 This is a BOOKING REQUEST. The customer wants to schedule a session or service.
-Your job is to gather the specific information needed to confirm it.
-Only ask about details NOT already provided in their email:
-- What dates or timeframe works for them?
-- How many people / group size?
-- What type of session or service are they after?
-- Any special requirements?
-Do NOT say "we will check availability and get back to you".
-Ask the questions directly so you can actually book them in.
-Keep it warm and brief — a short greeting, then your questions.
+If specific available slots are listed above, offer those times directly and ask the customer to confirm which works.
+If no slots are listed, ask which dates or timeframes work for them, along with any missing details (group size, service type, special requirements).
+Do NOT say "we will check availability and get back to you" — always move the booking forward.
+Keep it warm and brief: short greeting, present the options, clear call to action.
 """,
-    "invoice_query": """
+    "invoice": """
 This is an INVOICE or PAYMENT QUESTION.
 If the answer is in the business context, give it directly.
 If not, tell them exactly what you need from them to resolve it.
@@ -32,15 +27,20 @@ This is a COMPLAINT. Acknowledge it directly — do not dismiss or deflect.
 State clearly what you will do about it and when.
 Do not over-apologise. Be concise and solution-focused.
 """,
-    "general_reply": """
-This is a simple acknowledgement or general message.
-Reply in one or two sentences only.
-Do not add pricing, next steps, or anything not asked.
+    "existing_client": """
+This is a message from an existing client.
+Reply helpfully and directly.
+Keep it brief — no more than 3 sentences unless asking multiple questions.
 """,
     "new_lead": """
 This is a NEW ENQUIRY from a potential customer.
 Welcome them briefly, confirm what you offer, and ask one clear question
 to understand what they need. Do not write a marketing pitch.
+""",
+    "payment_confirmation": """
+This is a PAYMENT CONFIRMATION. Acknowledge receipt warmly and briefly.
+Confirm what was paid for and any next steps (e.g. booking confirmation, receipt to follow).
+One or two sentences only.
 """,
 }
 
@@ -57,10 +57,24 @@ def draft_reply(
     sender: str,
     classification: str,
     business_context: dict,
+    thread_context: str | None = None,
+    business_id: str | None = None,
+    available_slots: list[dict] | None = None,
 ) -> str:
+    """Generate a reply draft using business context and email classification.
+
+    Args:
+        subject:          Email subject line.
+        body:             Body of the latest message.
+        sender:           Sender address/name.
+        classification:   Category from classify_email().
+        business_context: Memory profile dict for the business.
+        thread_context:   Optional full thread text for context-aware replies.
+        business_id:      Optional — used for AI cost attribution.
+    """
     business_name = business_context.get("business_name") or "Olivander"
     business_type = business_context.get("business_type") or "service business"
-    tone = business_context.get("tone") or "warm, professional, brief"
+    tone = business_context.get("tone") or business_context.get("reply_tone") or "warm, professional, brief"
     pricing_range = business_context.get("pricing_range") or ""
     payment_terms = business_context.get("payment_terms") or ""
     services = business_context.get("services") or ""
@@ -81,7 +95,20 @@ def draft_reply(
         context_lines.append(f"- Pricing: {pricing_range}")
     if payment_terms:
         context_lines.append(f"- Payment terms: {payment_terms}")
-    business_context_block = "\n".join(context_lines) if context_lines else "- No additional context provided"
+    business_context_block = (
+        "\n".join(context_lines) if context_lines else "- No additional context provided"
+    )
+
+    thread_section = (
+        f"\nFull conversation thread (oldest first):\n{thread_context}\n"
+        if thread_context
+        else ""
+    )
+
+    slots_section = ""
+    if classification == "booking_request" and available_slots:
+        slot_lines = "\n".join(f"- {s['display']}" for s in available_slots)
+        slots_section = f"\nAvailable booking slots (offer these specific times):\n{slot_lines}\n"
 
     prompt = f"""
 You are drafting a reply on behalf of {business_name}, a {business_type} in New Zealand.
@@ -95,7 +122,7 @@ Email you are replying to:
 From: {sender}
 Subject: {subject}
 Body: {body}
-
+{thread_section}{slots_section}
 Classification: {classification}
 
 What to do:
@@ -109,14 +136,14 @@ Maximum 5 sentences unless you are asking multiple clarifying questions.
 Do not invent details not present in the email or business context.
 """.strip()
 
-    client = get_groq_client()
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    ai = get_ai_provider()
+    return ai.complete(
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
         max_tokens=400,
+        operation="draft_reply",
+        business_id=business_id,
     )
-    return (response.choices[0].message.content or "").strip()
 
 
 def normalise_task_title(value: str) -> str:
@@ -404,6 +431,7 @@ def generate_agent_plan(
     business_context: dict[str, Any] | None = None,
     source_email: dict[str, Any] | None = None,
     review_feedback: str | None = None,
+    business_id: str | None = None,
 ) -> dict[str, Any]:
     context = business_context or {}
     business_name = context.get("business_name") or "this business"
@@ -411,7 +439,7 @@ def generate_agent_plan(
     contact_name = context.get("contact_name") or ""
     location = context.get("location") or "New Zealand"
     services = context.get("services") or ""
-    tone = context.get("tone") or "warm, professional, brief"
+    tone = context.get("tone") or context.get("reply_tone") or "warm, professional, brief"
     pricing_range = context.get("pricing_range") or "Not provided"
     payment_terms = context.get("payment_terms") or "Not provided"
 
@@ -421,6 +449,7 @@ def generate_agent_plan(
             str(source_email.get("subject", "")),
             str(source_email.get("body", "")),
             str(source_email.get("senderEmail", "")),
+            business_id=business_id,
         )
         source_email_context = f"""
 
@@ -473,14 +502,14 @@ Rules:
 - Do not wrap the JSON in markdown fences."""
 
     try:
-        client = get_groq_client()
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        ai = get_ai_provider()
+        response_text = ai.complete(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=900,
+            operation="generate_plan",
+            business_id=business_id,
         )
-        response_text = (response.choices[0].message.content or "").strip()
         raw_plan = extract_json_object(response_text)
         if raw_plan is None:
             raise ValueError("Groq returned invalid JSON for the task plan.")

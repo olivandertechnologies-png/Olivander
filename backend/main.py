@@ -15,9 +15,14 @@ from slowapi.errors import RateLimitExceeded
 
 from agent.draft import generate_agent_plan
 from config import FRONTEND_ORIGIN as _FRONTEND_ORIGIN
+from config import get_secret
 from api.actions import router as actions_router
+from api.calendar import router as calendar_router
+from api.email_actions import router as email_actions_router
+from api.invoices import router as invoices_router
 from auth.deps import get_current_business
 from auth.google import router as google_auth_router
+from auth.xero import router as xero_auth_router
 from auth.tokens import clear_business_tokens, get_valid_token
 from db.supabase import (
     create_approval,
@@ -25,11 +30,13 @@ from db.supabase import (
     get_business_by_id,
     get_memory_profile,
     set_memory_value,
+    set_onboarded,
     verify_supabase_connection,
 )
 from gmail.client import get_message as gmail_get_message
 from gmail.client import list_recent_messages, send_message
 from gmail.webhook import router as gmail_webhook_router
+from jobs.queue import job_runner
 from rate_limit import limiter
 
 os.makedirs("logs", exist_ok=True)
@@ -48,8 +55,8 @@ REQUIRED = [
     "WEBHOOK_SECRET",
 ]
 for variable in REQUIRED:
-    if not os.getenv(variable):
-        raise RuntimeError(f"Missing required env var: {variable}")
+    if not get_secret(variable):
+        raise RuntimeError(f"Missing required configuration: {variable}")
 
 IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("RENDER") is not None
 
@@ -65,6 +72,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _CORS_ORIGINS = list({
     "http://localhost:5173",
     "https://olivander.vercel.app",
+    "https://olivander-api.onrender.com",
     _FRONTEND_ORIGIN,
 })
 
@@ -89,13 +97,23 @@ async def add_security_headers(request: Request, call_next) -> Response:
     return response
 
 app.include_router(google_auth_router)
+app.include_router(xero_auth_router)
 app.include_router(gmail_webhook_router)
 app.include_router(actions_router)
+app.include_router(calendar_router)
+app.include_router(invoices_router)
+app.include_router(email_actions_router)
 
 
 @app.on_event("startup")
 async def startup_checks() -> None:
     verify_supabase_connection()
+    await job_runner.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_jobs() -> None:
+    await job_runner.stop()
 
 
 @app.exception_handler(HTTPException)
@@ -149,7 +167,7 @@ def get_business_context(business_id: str) -> dict[str, Any]:
         "location": memory.get("location") or "",
         "services": memory.get("services") or "",
         "blocked_sender_patterns": memory.get("blocked_sender_patterns") or "noreply,no-reply,do-not-reply,notifications@,mailer-daemon,newsletter,unsubscribe",
-        "active_categories": memory.get("active_categories") or "booking_request,invoice_query,complaint,general_inquiry,new_lead",
+        "active_categories": memory.get("active_categories") or "new_lead,existing_client,booking_request,complaint,invoice,payment_confirmation",
     }
 
 
@@ -206,6 +224,7 @@ async def plan_agent_task(
             get_business_context(business_id),
             payload.source_email,
             payload.review_feedback,
+            business_id=business_id,
         )
     except HTTPException:
         raise
@@ -228,12 +247,30 @@ async def get_connections(
     except HTTPException:
         google_connected = False
 
+    xero_connected = bool(business.get("xero_access_token") and business.get("xero_tenant_id"))
+
     return {
         "google": google_connected,
+        "xero": xero_connected,
         "contact_name": business.get("contact_name") or business.get("first_name"),
         "business_name": business.get("business_name"),
         "email": business.get("email"),
+        "onboarded": bool(business.get("onboarded", True)),  # default True for existing businesses
     }
+
+
+@app.patch("/api/business/onboard")
+@limiter.limit("30/minute")
+async def complete_onboarding(
+    request: Request,
+    business_id: str = Depends(get_current_business),
+) -> dict[str, Any]:
+    """Mark the business as having completed onboarding."""
+    business = get_business_by_id(business_id)
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found.")
+    set_onboarded(business_id)
+    return {"success": True, "onboarded": True}
 
 
 @app.post("/api/connections/google/disconnect")

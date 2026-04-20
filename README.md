@@ -1,56 +1,66 @@
 # Olivander Technologies
 
-This repo is now set up for single-service Railway deployment from Git using Docker.
+AI operations layer for NZ South Island service SMEs. See `CLAUDE.md` for full project guide.
 
-## What was added
+## Deploy on Render
 
-- Root [Dockerfile](/Users/ollie/Downloads/OTechnologies/olivander-proto/Dockerfile)
-  Builds the Vite frontend, packages the FastAPI backend, and serves the built app from one container.
-- Root [.dockerignore](/Users/ollie/Downloads/OTechnologies/olivander-proto/.dockerignore)
-  Keeps secrets, caches, logs, and local build artifacts out of the deploy build context.
-
-## Deploy on Railway
+This repo uses a [Render Blueprint](https://render.com/docs/blueprint-spec) (`render.yaml`).
 
 1. Push the repo to GitHub.
-2. In Railway, create a new service from the GitHub repo root.
-3. Railway will detect the root [railway.toml](/Users/ollie/Downloads/OTechnologies/olivander-proto/railway.toml) and [Dockerfile](/Users/ollie/Downloads/OTechnologies/olivander-proto/Dockerfile).
-4. Add the required service variables.
-5. Deploy, then attach your public domain.
+2. In Render, go to **New → Blueprint** and connect the GitHub repo.
+3. Render will read `render.yaml` and configure the service automatically.
+4. Add the required environment variables (see below) in the Render dashboard.
+5. Deploy.
 
-Required runtime environment variables:
+### Required Environment Variables
 
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI`
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
-- `GROQ_API_KEY`
-- `JWT_SECRET`
-- `ENCRYPTION_KEY`
-- `WEBHOOK_SECRET`
-- `FRONTEND_ORIGIN`
+| Variable | Description |
+|----------|-------------|
+| `RENDER` | Set to `true` (enables production mode) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL (e.g. `https://olivander-api.onrender.com/auth/google/callback`) |
+| `FRONTEND_ORIGIN` | Frontend URL (e.g. `https://olivander.vercel.app`) |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service-role key (bypasses RLS) |
+| `GROQ_API_KEY` | Groq API key for LLM |
+| `JWT_SECRET` | Secret for HS256 JWT session tokens |
+| `ENCRYPTION_KEY` | Fernet key for encrypting OAuth tokens |
+| `WEBHOOK_SECRET` | Secret for Gmail Pub/Sub webhook auth |
 
-Recommended values for deployed URLs:
+Generate secrets:
+```bash
+# ENCRYPTION_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-- `FRONTEND_ORIGIN=https://your-app-domain`
-- `GOOGLE_REDIRECT_URI=https://your-app-domain/auth/google/callback`
+# JWT_SECRET / WEBHOOK_SECRET
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
-Railway healthcheck:
+### Healthcheck
 
-- `railway.toml` points Railway at `/health`
-- [backend/main.py](/Users/ollie/Downloads/OTechnologies/olivander-proto/backend/main.py) now serves `200 OK` from that endpoint
+Render uses `/health` (configured in `render.yaml`). Returns `200 OK` with `{"status": "ok"}`.
 
-Optional build variables:
+## Local Development
 
-- `VITE_API_URL`
-  Leave blank for same-origin deployment. The frontend now falls back to `window.location.origin` in production.
-- `VITE_GOOGLE_CLIENT_ID`
+```bash
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # Fill in all values
+uvicorn main:app --reload --port 8000
 
-## Local Docker run
+# Frontend
+cd frontend
+npm install
+cp .env.example .env  # Set VITE_API_URL=http://localhost:8000
+npm run dev
+```
+
+## Local Docker Run
 
 ```bash
 docker build -t olivander .
-docker run --env-file backend/.env -e FRONTEND_ORIGIN=http://localhost:8000 -p 8000:8000 olivander
+docker run --env-file backend/.env -e FRONTEND_ORIGIN=http://localhost:5173 -p 8000:8000 olivander
 ```
-
-Then open [http://localhost:8000](http://localhost:8000).

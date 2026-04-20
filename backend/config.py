@@ -52,6 +52,12 @@ GROQ_API_KEY = get_secret("GROQ_API_KEY")
 JWT_SECRET = get_secret("JWT_SECRET")
 ENCRYPTION_KEY = get_secret("ENCRYPTION_KEY")
 WEBHOOK_SECRET = get_secret("WEBHOOK_SECRET")
+XERO_CLIENT_ID = get_secret("XERO_CLIENT_ID")
+XERO_CLIENT_SECRET = get_secret("XERO_CLIENT_SECRET")
+XERO_REDIRECT_URI = (
+    get_secret("XERO_REDIRECT_URI", "http://localhost:8000/auth/xero/callback")
+    or "http://localhost:8000/auth/xero/callback"
+)
 
 GOOGLE_SCOPES = [
     "openid",
@@ -59,5 +65,5 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
