@@ -1,4 +1,3 @@
-import React from 'react';
 import DashboardApp from './components/DashboardApp.jsx';
 
 export default function App() {

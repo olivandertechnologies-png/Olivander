@@ -743,6 +743,7 @@ export default function DashboardApp() {
     return (
       <OnboardingWizard
         onComplete={handleOnboardingComplete}
+        onSaveMemory={saveMemoryKey}
         onGoogleConnect={handleGoogleConnect}
         onXeroConnect={handleXeroConnect}
         googleConnected={googleConnected}
