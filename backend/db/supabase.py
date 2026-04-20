@@ -190,6 +190,20 @@ def get_approval_by_id(approval_id: str) -> dict[str, Any] | None:
     return _normalise_row(response.data)
 
 
+def approval_exists_for_message(business_id: str, gmail_message_id: str) -> bool:
+    """Return True if any approval (pending or otherwise) already exists for this Gmail message ID."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .select("id")
+        .eq("business_id", business_id)
+        .eq("original_email_id", gmail_message_id)
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
+
+
 def update_approval_status(
     approval_id: str,
     status: str,

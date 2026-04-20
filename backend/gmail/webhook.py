@@ -11,6 +11,7 @@ from agent.classify import SKIP_LABELS, classify_email
 from agent.draft import draft_reply
 from config import FRONTEND_ORIGIN, WEBHOOK_SECRET
 from db.supabase import (
+    approval_exists_for_message,
     create_approval,
     get_business_by_email,
     get_business_by_id,
@@ -69,10 +70,15 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
         msg_id = msg["id"]
         thread_id = msg.get("thread_id")
 
+        # Dedup — Pub/Sub can fire multiple times for the same message
+        if approval_exists_for_message(business_id, msg_id):
+            logger.info("Approval already exists for message %s, skipping", msg_id)
+            return
+
         # Get full thread
         thread_messages = get_thread(access_token, thread_id) if thread_id else [msg]
         thread_content = "\n---\n".join(
-            f"From: {m['from']}\nSubject: {m['subject']}\nDate: {m['date']}\n\n{m['snippet']}"
+            f"From: {m['from']}\nSubject: {m['subject']}\nDate: {m['date']}\n\n{m.get('body') or m.get('snippet', '')}"
             for m in reversed(thread_messages)
         )
 
@@ -257,7 +263,7 @@ async def gmail_push_webhook(request: Request) -> dict[str, Any]:
         # Dispatch in a thread pool so blocking network I/O in the processor
         # does not stall the event loop. Return 200 immediately to Pub/Sub.
         import asyncio
-        asyncio.get_event_loop().run_in_executor(
+        asyncio.get_running_loop().run_in_executor(
             None, _process_gmail_notification, gmail_address, history_id
         )
 
