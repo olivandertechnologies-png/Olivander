@@ -118,32 +118,18 @@ def get_memory_profile(business_id: str) -> dict[str, str]:
     }
 
 
-def set_memory_value(business_id: str, key: str, value: str) -> None:
-    existing = (
-        get_supabase_client()
-        .table("memory")
-        .select("id")
-        .eq("business_id", business_id)
-        .eq("key", key)
-        .limit(1)
-        .execute()
-    )
-    row = _normalise_row(existing.data)
+def set_memory_value(business_id: str, key: str, value: str, source: str = "owner") -> None:
+    """Write a memory key atomically using upsert on the (business_id, key) unique constraint.
 
-    if row and row.get("id"):
-        (
-            get_supabase_client()
-            .table("memory")
-            .update({"value": value})
-            .eq("id", row["id"])
-            .execute()
-        )
-        return
-
+    Requires migration 009_memory_unique_key.sql to be applied.
+    """
     (
         get_supabase_client()
         .table("memory")
-        .insert({"business_id": business_id, "key": key, "value": value})
+        .upsert(
+            {"business_id": business_id, "key": key, "value": value, "source": source},
+            on_conflict="business_id,key",
+        )
         .execute()
     )
 
@@ -156,22 +142,30 @@ def create_approval(
     why: str | None = None,
     original_email_id: str | None = None,
     draft_content: str | None = None,
+    execution_plan: dict | None = None,
+    retrieved_context: list | None = None,
 ) -> dict[str, Any] | None:
     """Create a pending approval in the approvals table."""
+    row: dict[str, Any] = {
+        "business_id": business_id,
+        "status": "pending",
+        "type": approval_type,
+        "who": who,
+        "what": what,
+        "why": why,
+        "original_email_id": original_email_id,
+        "draft_content": draft_content,
+        "when_ts": None,
+    }
+    if execution_plan is not None:
+        row["execution_plan"] = execution_plan
+    if retrieved_context is not None:
+        row["retrieved_context"] = retrieved_context
+
     response = (
         get_supabase_client()
         .table("approvals")
-        .insert({
-            "business_id": business_id,
-            "status": "pending",
-            "type": approval_type,
-            "who": who,
-            "what": what,
-            "why": why,
-            "original_email_id": original_email_id,
-            "draft_content": draft_content,
-            "when_ts": None,
-        })
+        .insert(row)
         .execute()
     )
     return _normalise_row(response.data)
@@ -427,3 +421,283 @@ def get_due_jobs(limit: int = 20) -> list[dict[str, Any]]:
         .execute()
     )
     return response.data or []
+
+
+# ── Lead Pipeline ──────────────────────────────────────────────────────────────
+
+def create_lead(
+    business_id: str,
+    *,
+    name: str,
+    email: str | None = None,
+    phone: str | None = None,
+    stage: str = "new_enquiry",
+    source: str = "email",
+    enquiry_type: str | None = None,
+    notes: str | None = None,
+    thread_id: str | None = None,
+    approval_id: str | None = None,
+    follow_up_due_at: str | None = None,
+) -> dict[str, Any] | None:
+    data: dict[str, Any] = {
+        "business_id": business_id,
+        "name": name,
+        "stage": stage,
+        "source": source,
+    }
+    if email:
+        data["email"] = email
+    if phone:
+        data["phone"] = phone
+    if enquiry_type:
+        data["enquiry_type"] = enquiry_type
+    if notes:
+        data["notes"] = notes
+    if thread_id:
+        data["thread_id"] = thread_id
+    if approval_id:
+        data["approval_id"] = approval_id
+    if follow_up_due_at:
+        data["follow_up_due_at"] = follow_up_due_at
+
+    response = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .insert(data)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_leads(
+    business_id: str,
+    *,
+    stage: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    query = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .select("*")
+        .eq("business_id", business_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if stage:
+        query = query.eq("stage", stage)
+    return query.execute().data or []
+
+
+def get_lead(business_id: str, lead_id: str) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("id", lead_id)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def update_lead(
+    business_id: str,
+    lead_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .update(updates)
+        .eq("business_id", business_id)
+        .eq("id", lead_id)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_lead_pipeline_summary(business_id: str) -> dict[str, Any]:
+    """Return counts per stage plus narrative data for the Home screen."""
+    from datetime import datetime, timezone, timedelta
+
+    leads = get_leads(business_id, limit=500)
+    now = datetime.now(timezone.utc)
+
+    active_stages = [l for l in leads if l.get("stage") not in ("won", "lost")]
+    stage_counts: dict[str, int] = {}
+    for lead in active_stages:
+        s = lead.get("stage", "new_enquiry")
+        stage_counts[s] = stage_counts.get(s, 0) + 1
+
+    # Stale quotes: quote_sent leads created more than 5 days ago
+    stale_quotes = sum(
+        1 for l in leads
+        if l.get("stage") == "quote_sent"
+        and l.get("created_at")
+        and (now - datetime.fromisoformat(l["created_at"].replace("Z", "+00:00"))).days > 5
+    )
+
+    # Unreplied enquiries: new_enquiry leads older than 24 hours
+    unreplied_enquiries = sum(
+        1 for l in leads
+        if l.get("stage") == "new_enquiry"
+        and l.get("created_at")
+        and (now - datetime.fromisoformat(l["created_at"].replace("Z", "+00:00"))).total_seconds() > 86400
+    )
+
+    # Conversion this month: won / (won + lost) for leads created this calendar month
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_leads = [
+        l for l in leads
+        if l.get("created_at")
+        and datetime.fromisoformat(l["created_at"].replace("Z", "+00:00")) >= month_start
+    ]
+    won_this_month = sum(1 for l in month_leads if l.get("stage") == "won")
+    closed_this_month = sum(1 for l in month_leads if l.get("stage") in ("won", "lost"))
+
+    return {
+        "total_active": len(active_stages),
+        "by_stage": stage_counts,
+        "new_enquiries": stage_counts.get("new_enquiry", 0),
+        "quotes_pending": stage_counts.get("quote_sent", 0),
+        "stale_quotes": stale_quotes,
+        "unreplied_enquiries": unreplied_enquiries,
+        "won_this_month": won_this_month,
+        "closed_this_month": closed_this_month,
+    }
+
+
+# ── First-customer workspace records ─────────────────────────────────────────
+
+def get_workspace_jobs(business_id: str) -> list[dict[str, Any]]:
+    response = (
+        get_supabase_client()
+        .table("workspace_jobs")
+        .select("*")
+        .eq("business_id", business_id)
+        .order("updated_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def get_workspace_job(business_id: str, job_id: str) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("workspace_jobs")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def create_workspace_job(business_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    row = {"business_id": business_id, **data}
+    response = get_supabase_client().table("workspace_jobs").insert(row).execute()
+    return _normalise_row(response.data)
+
+
+def update_workspace_job(
+    business_id: str,
+    job_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("workspace_jobs")
+        .update(updates)
+        .eq("business_id", business_id)
+        .eq("id", job_id)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_workspace_messages(business_id: str) -> list[dict[str, Any]]:
+    response = (
+        get_supabase_client()
+        .table("workspace_messages")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("status", "active")
+        .order("updated_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def create_workspace_message(business_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    row = {"business_id": business_id, **data}
+    response = get_supabase_client().table("workspace_messages").insert(row).execute()
+    return _normalise_row(response.data)
+
+
+def get_workspace_message_by_source_email(
+    business_id: str,
+    source_email_id: str,
+) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("workspace_messages")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("source_email_id", source_email_id)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def update_workspace_message(
+    business_id: str,
+    message_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("workspace_messages")
+        .update(updates)
+        .eq("business_id", business_id)
+        .eq("id", message_id)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_workspace_actions(business_id: str) -> list[dict[str, Any]]:
+    response = (
+        get_supabase_client()
+        .table("workspace_actions")
+        .select("*")
+        .eq("business_id", business_id)
+        .neq("status", "archived")
+        .order("updated_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def create_workspace_action(business_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    row = {"business_id": business_id, **data}
+    response = get_supabase_client().table("workspace_actions").insert(row).execute()
+    return _normalise_row(response.data)
+
+
+def update_workspace_action(
+    business_id: str,
+    action_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    response = (
+        get_supabase_client()
+        .table("workspace_actions")
+        .update(updates)
+        .eq("business_id", business_id)
+        .eq("id", action_id)
+        .execute()
+    )
+    return _normalise_row(response.data)

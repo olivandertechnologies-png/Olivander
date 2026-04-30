@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleIcon, XeroIcon, ArrowRightIcon } from './icons.jsx';
+import { buildBackendUrl } from '../utils/api.js';
 
-const STEPS = ['connect', 'chat', 'launch'];
-const STEP_LABELS = ['Connect', 'About you', 'Ready'];
+const STEPS = ['connect', 'chat', 'preview', 'launch'];
+const STEP_LABELS = ['Connect', 'About you', 'Preview', 'Ready'];
 
 const CHAT_QUESTIONS = [
   {
@@ -16,6 +17,13 @@ const CHAT_QUESTIONS = [
     text: 'What kind of work do you do?',
     placeholder: 'e.g. Mountain guiding, landscaping, consulting',
     optional: false,
+  },
+  {
+    key: 'plan',
+    text: 'Which pilot plan are you starting on?',
+    placeholder: '',
+    optional: false,
+    quickReplies: ['Admin Starter', 'Admin Plus'],
   },
   {
     key: 'location',
@@ -65,9 +73,9 @@ const CHAT_QUESTIONS = [
 let _msgId = 0;
 function nextId() { return ++_msgId; }
 
-// Brief reactions shown after each answer before the next question
 const REACTIONS = {
   business_name:     (a) => `${a} — love it.`,
+  plan:              (a) => `${a} selected.`,
   location:          ()  => 'Good to know.',
   reply_tone:        ()  => "Got it, I'll keep that in mind.",
   pricing_range:     ()  => 'Helpful.',
@@ -81,6 +89,58 @@ function getAck(key, answer) {
   return REACTIONS[key]?.(answer) ?? null;
 }
 
+const CONF_LABEL = { high: 'High', medium: 'Medium', review: 'Review' };
+
+function DryRunProposal({ proposal }) {
+  const [open, setOpen] = useState(false);
+  const plan = proposal.executionPlan;
+
+  return (
+    <div className="dryrun-card">
+      <div className="dryrun-card__header">
+        <div>
+          <div className="dryrun-card__sender">{proposal.senderName}</div>
+          <div className="dryrun-card__subject">{proposal.subject}</div>
+        </div>
+        <span className={`dryrun-badge dryrun-badge--${proposal.classification.replace('_', '-')}`}>
+          {proposal.classification.replace(/_/g, ' ')}
+        </span>
+      </div>
+
+      {plan && (
+        <button
+          type="button"
+          className="dryrun-plan-toggle"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className={`exec-confidence exec-confidence--${plan.confidence}`} />
+          <span className="dryrun-plan-toggle__label">
+            Execution plan · {CONF_LABEL[plan.confidence]} confidence
+          </span>
+          <span>{open ? '▲' : '▼'}</span>
+        </button>
+      )}
+
+      {open && plan?.steps && (
+        <ol className="exec-plan__steps dryrun-steps">
+          {plan.steps.map((s) => (
+            <li key={s.n} className="exec-plan__step">
+              <span className={`exec-confidence exec-confidence--${s.confidence}`} />
+              <div className="exec-plan__step-body">
+                <span className="exec-plan__step-action">{s.action}</span>
+                <span className="exec-plan__step-system">{s.system}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="dryrun-draft-label">Draft reply</div>
+      <div className="dryrun-draft">{proposal.draft}</div>
+    </div>
+  );
+}
+
 export default function OnboardingWizard({
   onComplete,
   onSaveMemory,
@@ -90,6 +150,7 @@ export default function OnboardingWizard({
   xeroConnected,
   googleBusy,
   xeroBusy,
+  authToken,
 }) {
   const [step, setStep] = useState(0);
 
@@ -101,18 +162,21 @@ export default function OnboardingWizard({
   const [chatComplete, setChatComplete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Dry-run state
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunProposals, setDryRunProposals] = useState(null);
+  const [dryRunError, setDryRunError] = useState('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Scroll chat to bottom on new messages
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Focus input after AI finishes "typing"
   useEffect(() => {
     if (step === 1 && !isTyping && !chatComplete) {
       const t = setTimeout(() => inputRef.current?.focus(), 50);
@@ -120,9 +184,7 @@ export default function OnboardingWizard({
     }
   }, [questionIndex, isTyping, step, chatComplete]);
 
-  // Init / reset chat whenever step changes
   useEffect(() => {
-    // Reset chat state on every step change first
     setMessages([]);
     setQuestionIndex(0);
     setChatComplete(false);
@@ -131,7 +193,6 @@ export default function OnboardingWizard({
 
     if (step !== 1) return;
 
-    // Entering the chat step — show typing indicator then first question
     setIsTyping(true);
     const t = setTimeout(() => {
       setIsTyping(false);
@@ -139,6 +200,51 @@ export default function OnboardingWizard({
     }, 700);
     return () => clearTimeout(t);
   }, [step]);
+
+  // Clear dry-run cache when leaving the preview step so re-entry always refetches
+  useEffect(() => {
+    if (step !== 2) {
+      setDryRunProposals(null);
+      setDryRunError('');
+    }
+  }, [step]);
+
+  // Load dry-run proposals when entering the preview step
+  useEffect(() => {
+    if (step !== 2) return;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    setDryRunLoading(true);
+    setDryRunError('');
+    setDryRunProposals(null);
+
+    fetch(buildBackendUrl('/api/onboarding/dry-run'), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    })
+      .then((r) => {
+        if (!r.ok) return Promise.reject(r.status);
+        return r.json();
+      })
+      .then((data) => { setDryRunProposals(data || []); })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          setDryRunError('Preview timed out. You can still continue.');
+        } else {
+          setDryRunError('Could not load email preview. You can still continue.');
+        }
+        setDryRunProposals([]);
+      })
+      .finally(() => { clearTimeout(timeout); setDryRunLoading(false); });
+
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [step, authToken]);
 
   function addAiMessage(text) {
     setMessages((prev) => [...prev, { id: nextId(), role: 'ai', text }]);
@@ -183,7 +289,6 @@ export default function OnboardingWizard({
 
     const ack = q?.key ? getAck(q.key, text) : null;
     if (ack) {
-      // Show ack bubble, then a beat, then typing → next question
       setTimeout(() => {
         addAiMessage(ack);
         setTimeout(() => advanceQuestion(questionIndex), 250);
@@ -201,6 +306,7 @@ export default function OnboardingWizard({
   function canProceed() {
     if (step === 0) return googleConnected;
     if (step === 1) return chatComplete;
+    if (step === 2) return !dryRunLoading;
     return true;
   }
 
@@ -247,7 +353,7 @@ export default function OnboardingWizard({
           ))}
         </div>
 
-        {/* Body — key forces remount + re-animation on step change */}
+        {/* Body */}
         <div className="onboarding-body" key={step}>
 
           {/* Step 0: Connect */}
@@ -300,7 +406,6 @@ export default function OnboardingWizard({
           {/* Step 1: Chat */}
           {step === 1 && (
             <div className="ob-chat">
-              {/* Messages */}
               <div className="ob-chat__messages">
                 {messages.map((msg) => (
                   <div key={msg.id} className={`ob-bubble ob-bubble--${msg.role}`}>
@@ -315,7 +420,6 @@ export default function OnboardingWizard({
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Input */}
               {!chatComplete && !isTyping && (
                 <div className="ob-input-wrap">
                   {currentQ?.quickReplies ? (
@@ -364,8 +468,39 @@ export default function OnboardingWizard({
             </div>
           )}
 
-          {/* Step 2: Ready */}
+          {/* Step 2: Dry-run preview */}
           {step === 2 && (
+            <div className="onboarding-section dryrun-section">
+              <h3 className="onboarding-section__title">Here's what I'd do with your inbox</h3>
+              <p className="onboarding-section__hint">
+                These are draft replies for your most recent real emails — nothing has been sent or saved. Review them to see how I work before you go live.
+              </p>
+
+              {dryRunLoading && (
+                <div className="dryrun-loading">
+                  <div className="dryrun-loading__dot" />
+                  <span>Reading your inbox…</span>
+                </div>
+              )}
+
+              {dryRunError && (
+                <p className="onboarding-section__required">{dryRunError}</p>
+              )}
+
+              {!dryRunLoading && dryRunProposals !== null && dryRunProposals.length === 0 && !dryRunError && (
+                <p className="onboarding-section__hint" style={{ marginTop: 8 }}>
+                  No recent emails found that need a reply. You're ready to go live.
+                </p>
+              )}
+
+              {!dryRunLoading && dryRunProposals?.map((p, i) => (
+                <DryRunProposal key={i} proposal={p} />
+              ))}
+            </div>
+          )}
+
+          {/* Step 3: Ready */}
+          {step === 3 && (
             <div className="onboarding-section onboarding-section--center">
               <h3 className="onboarding-section__title">You're ready to go</h3>
               <p className="onboarding-section__hint">
@@ -411,7 +546,6 @@ export default function OnboardingWizard({
           )}
         </div>
 
-        {/* Legal links */}
         <p className="onboarding-legal">
           By continuing you agree to our{' '}
           <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>

@@ -23,8 +23,8 @@ export default function TasksPanel({
 }) {
   return (
     <section className="panel-scroll__inner tasks-panel">
-      <div className="panel-heading panel-heading--row">
-        <div className="filter-row" style={{ marginBottom: 0 }}>
+      <div className="tasks-toolbar">
+        <div className="filter-row tasks-toolbar__filters">
           {TASK_FILTERS.map((filter) => (
             <button
               key={filter}
@@ -36,7 +36,7 @@ export default function TasksPanel({
             </button>
           ))}
         </div>
-        <button type="button" className="primary-button" aria-label="New task" onClick={onNewTaskClick}>
+        <button type="button" className="primary-button tasks-toolbar__add" aria-label="Add task" onClick={onNewTaskClick}>
           <PlusIcon />
         </button>
       </div>

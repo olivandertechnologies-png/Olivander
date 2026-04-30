@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import logging
@@ -6,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from agent.learning import maybe_learn_from_edit
 from auth.deps import get_current_business
 from auth.tokens import get_valid_token
 from db.supabase import (
@@ -202,6 +204,97 @@ async def approve_action(
                 "approved_at": now,
             }
 
+        # ── Quote send — HTML email to client ──────────────────────────────
+        if approval_type == "send_quote":
+            access_token = get_valid_token(business_id)
+            quote_payload = approval.get("edited_content") or approval.get("draft_content") or "{}"
+            try:
+                quote_data = json.loads(quote_payload)
+            except (TypeError, json.JSONDecodeError) as error:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Quote approval contains invalid JSON.",
+                ) from error
+
+            contact_name = str(quote_data.get("contact_name") or "")
+            contact_email = str(quote_data.get("contact_email") or "")
+            title = str(quote_data.get("title") or "Quote")
+            html_body = str(quote_data.get("html_body") or "")
+
+            if not contact_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No email address for {contact_name}. Edit the approval to add one before sending.",
+                )
+
+            # Build plain-text fallback
+            items = quote_data.get("line_items") or []
+            lines = [f"  - {i.get('description','')} x{i.get('quantity',1)} @ ${i.get('unit_amount_excl_gst',0)}" for i in items]
+            text_body = f"{title}\n\nPrepared for {contact_name}\n\n" + "\n".join(lines)
+
+            from gmail.client import send_html_message
+            from db.supabase import get_memory_profile
+            from api.quotes import generate_quote_pdf
+            memory = get_memory_profile(business_id)
+            business_name = memory.get("business_name") or "Your Business"
+
+            try:
+                pdf_bytes = generate_quote_pdf(quote_data, business_name)
+                safe_name = contact_name.replace("/", "-") if contact_name else "Quote"
+                pdf_filename = f"{title} - {safe_name}.pdf"
+            except Exception as pdf_error:
+                logger.warning("PDF generation failed, sending without attachment: %s", pdf_error)
+                pdf_bytes = None
+                pdf_filename = "Quote.pdf"
+
+            send_html_message(
+                access_token,
+                to_email=contact_email,
+                subject=f"{title} from {business_name}",
+                html_body=html_body,
+                text_body=text_body,
+                pdf_bytes=pdf_bytes,
+                pdf_filename=pdf_filename,
+            )
+
+            _safe_log_activity(
+                business_id,
+                f"Quote sent to {contact_name} ({contact_email})",
+                activity_type="approval_executed",
+                metadata={
+                    "approval_id": approval_id,
+                    "contact_name": contact_name,
+                    "contact_email": contact_email,
+                    "type": "quote",
+                },
+            )
+
+            # Enqueue +5 day and +10 day follow-ups
+            try:
+                follow_base = {
+                    "business_id": business_id,
+                    "contact_name": contact_name,
+                    "contact_email": contact_email,
+                    "quote_title": title,
+                    "approval_id": approval_id,
+                    "step": 1,
+                }
+                enqueue_job(
+                    job_type="follow_up_email",
+                    payload={**follow_base, "follow_up_reason": "quote_no_response"},
+                    delay_seconds=5 * 86400,
+                    business_id=business_id,
+                )
+            except Exception as fu_error:
+                logger.warning("Could not enqueue quote follow-up: %s", fu_error)
+
+            return {
+                "status": "approved",
+                "approval_id": approval_id,
+                "sent_to": contact_email,
+                "approved_at": now,
+            }
+
         # ── All remaining types need a Google access token ──────────────────
         access_token = get_valid_token(business_id)
 
@@ -339,6 +432,22 @@ async def approve_action(
                 "subject": subject,
             },
         )
+
+        # Learn from edits — fire in background so it never delays the response
+        original_draft = approval.get("draft_content") or ""
+        edited_draft = approval.get("edited_content") or ""
+        if original_draft and edited_draft and original_draft.strip() != edited_draft.strip():
+            # Parse classification from the why field ("Classified as new_lead")
+            why = approval.get("why") or ""
+            classification = why.removeprefix("Classified as ").strip() or approval_type
+            asyncio.get_running_loop().run_in_executor(
+                None,
+                maybe_learn_from_edit,
+                business_id,
+                original_draft,
+                edited_draft,
+                classification,
+            )
 
         return {
             "status": "approved",

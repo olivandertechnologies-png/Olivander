@@ -15,6 +15,7 @@ export function createEmptyMemoryProfile() {
     [MEMORY_KEYS.noShowHandling]: '',
     [MEMORY_KEYS.blockedSenderPatterns]: 'noreply,no-reply,do-not-reply,notifications@,mailer-daemon,newsletter,unsubscribe',
     [MEMORY_KEYS.activeCategories]: 'booking_request,invoice_query,complaint,general_inquiry,new_lead',
+    [MEMORY_KEYS.plan]: 'starter',
   };
 }
 

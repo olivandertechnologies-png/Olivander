@@ -13,13 +13,20 @@ from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from agent.draft import generate_agent_plan
+from agent.classify import classify_email
+from agent.draft import draft_reply, generate_agent_plan
+from agent.execution_plan import build_execution_plan
+from agent.rag import retrieve_context_chunks
 from config import FRONTEND_ORIGIN as _FRONTEND_ORIGIN
 from config import get_secret
 from api.actions import router as actions_router
 from api.calendar import router as calendar_router
+from api.clients import router as clients_router
 from api.email_actions import router as email_actions_router
 from api.invoices import router as invoices_router
+from api.leads import router as leads_router
+from api.quotes import router as quotes_router
+from api.workspace import router as workspace_router
 from auth.deps import get_current_business
 from auth.google import router as google_auth_router
 from auth.xero import router as xero_auth_router
@@ -101,7 +108,11 @@ app.include_router(xero_auth_router)
 app.include_router(gmail_webhook_router)
 app.include_router(actions_router)
 app.include_router(calendar_router)
+app.include_router(clients_router)
 app.include_router(invoices_router)
+app.include_router(leads_router)
+app.include_router(quotes_router)
+app.include_router(workspace_router)
 app.include_router(email_actions_router)
 
 
@@ -168,6 +179,7 @@ def get_business_context(business_id: str) -> dict[str, Any]:
         "services": memory.get("services") or "",
         "blocked_sender_patterns": memory.get("blocked_sender_patterns") or "noreply,no-reply,do-not-reply,notifications@,mailer-daemon,newsletter,unsubscribe",
         "active_categories": memory.get("active_categories") or "new_lead,existing_client,booking_request,complaint,invoice,payment_confirmation",
+        "plan": memory.get("plan") or "starter",
     }
 
 
@@ -394,11 +406,13 @@ def _normalise_approval_row(row: dict[str, Any]) -> dict[str, Any]:
         "senderEmail": sender_email or "unknown@example.com",
         "subject": row.get("what") or "Untitled",
         "createdAt": created_at_ms,
-        "tier": f"Tier {row.get('tier', 3)}",
+        "tier": f"Tier {row.get('tier', 3)} — owner approval required",
         "why": row.get("why") or "",
         "agentResponse": row.get("edited_content") or row.get("draft_content") or "",
         "status": "edited" if row.get("edited_content") else "review",
         "sourceEmailId": row.get("original_email_id"),
+        "executionPlan": row.get("execution_plan"),
+        "retrievedContext": row.get("retrieved_context"),
         "taskId": None,
     }
 
@@ -442,6 +456,83 @@ async def create_approval_endpoint(
     if not row:
         raise HTTPException(status_code=500, detail="Could not create approval.")
     return _normalise_approval_row(row)
+
+
+@app.post("/api/onboarding/dry-run")
+@limiter.limit("10/minute")
+async def onboarding_dry_run(
+    request: Request,
+    business_id: str = Depends(get_current_business),
+) -> list[dict[str, Any]]:
+    """Classify and draft 2-3 recent real emails without saving anything.
+
+    Used in onboarding Step 3 so the owner sees what the agent would do
+    with their inbox before going live. Nothing is queued or sent.
+    """
+    import asyncio
+
+    def _run_dry_run() -> list[dict[str, Any]]:
+        try:
+            emails = build_recent_email_payload(business_id=business_id, max_results=10)
+        except Exception as err:
+            logger.warning("Dry-run: could not fetch emails for %s: %s", business_id, err)
+            raise HTTPException(status_code=502, detail="Could not read your inbox. Check that Gmail is connected.")
+
+        context = get_business_context(business_id)
+        business = get_business_by_id(business_id) or {}
+        has_xero = bool(business.get("xero_access_token") and business.get("xero_tenant_id"))
+
+        proposals: list[dict[str, Any]] = []
+        skipped = 0
+
+        for email in emails:
+            if len(proposals) >= 3:
+                break
+            try:
+                classification = classify_email(
+                    subject=email["subject"],
+                    body=email["body"],
+                    sender=email["senderEmail"],
+                    business_id=business_id,
+                )
+                if classification in ("spam", "fyi"):
+                    continue
+
+                retrieved = retrieve_context_chunks(business_id, classification)
+                draft = draft_reply(
+                    subject=email["subject"],
+                    body=email["body"],
+                    sender=email["senderEmail"],
+                    classification=classification,
+                    business_context=context,
+                    business_id=business_id,
+                    retrieved_context=retrieved,
+                )
+                plan = build_execution_plan(
+                    classification=classification,
+                    retrieved_context=retrieved,
+                    has_xero=has_xero,
+                    is_known_client=(classification == "existing_client"),
+                )
+                proposals.append({
+                    "senderName": email["senderName"],
+                    "senderEmail": email["senderEmail"],
+                    "subject": email["subject"],
+                    "classification": classification,
+                    "draft": draft,
+                    "executionPlan": plan,
+                    "retrievedContext": retrieved,
+                })
+            except Exception as err:
+                logger.warning("Dry-run: could not process email for %s: %s", business_id, err)
+                skipped += 1
+
+        if skipped > 0 and not proposals:
+            raise HTTPException(status_code=502, detail="Could not generate any draft proposals. Please try again.")
+
+        return proposals
+
+    return await asyncio.get_running_loop().run_in_executor(None, _run_dry_run)
 
 
 @app.get("/health", include_in_schema=False)

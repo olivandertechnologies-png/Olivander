@@ -60,24 +60,24 @@ def draft_reply(
     thread_context: str | None = None,
     business_id: str | None = None,
     available_slots: list[dict] | None = None,
+    retrieved_context: list[dict[str, str]] | None = None,
 ) -> str:
     """Generate a reply draft using business context and email classification.
 
     Args:
-        subject:          Email subject line.
-        body:             Body of the latest message.
-        sender:           Sender address/name.
-        classification:   Category from classify_email().
-        business_context: Memory profile dict for the business.
-        thread_context:   Optional full thread text for context-aware replies.
-        business_id:      Optional — used for AI cost attribution.
+        subject:           Email subject line.
+        body:              Body of the latest message.
+        sender:            Sender address/name.
+        classification:    Category from classify_email().
+        business_context:  Memory profile dict for the business.
+        thread_context:    Optional full thread text for context-aware replies.
+        business_id:       Optional — used for AI cost attribution.
+        available_slots:   Optional calendar slots for booking_request replies.
+        retrieved_context: Optional structured chunks from RAG retrieval.
     """
     business_name = business_context.get("business_name") or "Olivander"
     business_type = business_context.get("business_type") or "service business"
     tone = business_context.get("tone") or business_context.get("reply_tone") or "warm, professional, brief"
-    pricing_range = business_context.get("pricing_range") or ""
-    payment_terms = business_context.get("payment_terms") or ""
-    services = business_context.get("services") or ""
     nz_greeting = bool(business_context.get("nz_greeting"))
     greeting_instruction = (
         'You may use "Kia ora" naturally if it fits the message.'
@@ -88,15 +88,43 @@ def draft_reply(
         classification, _DEFAULT_INSTRUCTION
     )
 
-    context_lines = []
-    if services:
-        context_lines.append(f"- Services offered: {services}")
-    if pricing_range:
-        context_lines.append(f"- Pricing: {pricing_range}")
-    if payment_terms:
-        context_lines.append(f"- Payment terms: {payment_terms}")
+    # Separate learned tone instructions from regular context chunks
+    learned_instruction = ""
+    if retrieved_context is not None:
+        learned_chunks = [
+            c for c in retrieved_context
+            if c.get("key", "").startswith("learned_tone_")
+        ]
+        regular_chunks = [
+            c for c in retrieved_context
+            if not c.get("key", "").startswith("learned_tone_")
+        ]
+        if learned_chunks:
+            learned_instruction = learned_chunks[0]["value"]
+        context_lines = [
+            f"- {c['key'].replace('_', ' ').title()}: {c['value']}"
+            for c in regular_chunks
+        ]
+    else:
+        pricing_range = business_context.get("pricing_range") or ""
+        payment_terms = business_context.get("payment_terms") or ""
+        services = business_context.get("services") or ""
+        context_lines = []
+        if services:
+            context_lines.append(f"- Services offered: {services}")
+        if pricing_range:
+            context_lines.append(f"- Pricing: {pricing_range}")
+        if payment_terms:
+            context_lines.append(f"- Payment terms: {payment_terms}")
+
     business_context_block = (
         "\n".join(context_lines) if context_lines else "- No additional context provided"
+    )
+
+    learned_section = (
+        f"\nOwner preference (apply this — it overrides the default tone guidance):\n{learned_instruction}\n"
+        if learned_instruction
+        else ""
     )
 
     thread_section = (
@@ -116,8 +144,7 @@ You are drafting a reply on behalf of {business_name}, a {business_type} in New 
 Tone: {tone}. Human, warm, and direct. Use New Zealand English.
 Never start with "I hope this email finds you well" or similar filler.
 {greeting_instruction}
-Sign off as: {business_name}
-
+Sign off as: {business_name}{learned_section}
 Email you are replying to:
 From: {sender}
 Subject: {subject}

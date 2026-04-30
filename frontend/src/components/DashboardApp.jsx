@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-import HomePanel, { pickRandomHomeHeadlineVariant } from './HomePanel.jsx';
+import TodayPanel from './TodayPanel.jsx';
+import InboxPanel from './InboxPanel.jsx';
+import JobsPanel from './JobsPanel.jsx';
 import TasksPanel from './TasksPanel.jsx';
 import ApprovalsPanel from './ApprovalsPanel.jsx';
 import ActivityPanel from './ActivityPanel.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
+import LeadPipelinePanel from './LeadPipelinePanel.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import {
-  HouseIcon, TaskListIcon, CheckCircleIcon, LinesIcon,
-  ArrowLeftIcon, GearIcon, DatabaseIcon, FunnelIcon, SunIcon, LogoutIcon,
+  HouseIcon, TaskListIcon, CheckCircleIcon, LinesIcon, LeadPipelineIcon,
+  ArrowLeftIcon, GearIcon, DatabaseIcon, FunnelIcon, SunIcon, LogoutIcon, ShieldIcon, MailIcon,
 } from './icons.jsx';
 
 import {
@@ -17,6 +20,11 @@ import {
   APPROVAL_REMOVE_MS, PROCESSING_PULSE_MS, PLAN_MOCK_DELAY_MS, INBOX_SYNC_INTERVAL_MS,
   RECENT_EMAILS_MAX, USE_MOCK_AGENT_PLAN,
 } from '../utils/constants.js';
+import {
+  DEMO_MODE_STORAGE_KEY, PLAN_CONFIG, PLAN_KEYS, PLAN_STORAGE_KEY,
+  createFirstCustomerSampleWorkspace,
+  isPlusPlan, normalisePlanKey,
+} from '../utils/firstCustomer.js';
 import { getInitialTheme, getStoredSession, persistSession, getStoredProcessedEmailIds, persistProcessedEmailIds, decodeSessionPayload } from '../utils/storage.js';
 import { trimToNull, formatDisplayName, toTimestamp, filterActivityItems } from '../utils/format.js';
 import { buildBackendUrl, BACKEND_ORIGIN, readResponseDetail } from '../utils/api.js';
@@ -28,9 +36,11 @@ import {
 } from '../utils/task.js';
 
 const SETTINGS_SECTIONS = SETTINGS_SECTIONS_CONFIG.map((item, i) => {
-  const icons = [<GearIcon />, <DatabaseIcon />, <FunnelIcon />, <SunIcon />];
+  const icons = [<GearIcon />, <CheckCircleIcon />, <DatabaseIcon />, <FunnelIcon />, <SunIcon />, <ShieldIcon />];
   return { ...item, icon: icons[i] };
 });
+
+const INITIAL_SAMPLE_WORKSPACE = createFirstCustomerSampleWorkspace();
 
 export default function DashboardApp() {
   const processedEmailIdsRef = useRef(getStoredProcessedEmailIds());
@@ -47,7 +57,6 @@ export default function DashboardApp() {
 
   const [theme, setTheme] = useState(getInitialTheme);
   const [isThemeSwitching, setIsThemeSwitching] = useState(false);
-  const [homeHeadlineVariant] = useState(() => pickRandomHomeHeadlineVariant(new Date()));
   const [sessionToken, setSessionToken] = useState(getStoredSession);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -56,8 +65,9 @@ export default function DashboardApp() {
   const [isOnboarded, setIsOnboarded] = useState(true); // default true to avoid flash; check on mount
   const [activePanel, setActivePanel] = useState('home');
   const [settingsSection, setSettingsSection] = useState('connections');
+  const [plan, setPlan] = useState(() => normalisePlanKey(window.localStorage.getItem(PLAN_STORAGE_KEY)));
+  const [demoMode, setDemoMode] = useState(() => window.localStorage.getItem(DEMO_MODE_STORAGE_KEY) !== 'false');
   const [profileMenuState, setProfileMenuState] = useState(null);
-  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [homeInput, setHomeInput] = useState('');
   const [taskInput, setTaskInput] = useState('');
   const [showTaskComposer, setShowTaskComposer] = useState(false);
@@ -75,19 +85,33 @@ export default function DashboardApp() {
   const [activityFilter, setActivityFilter] = useState('all');
   const [recentEmails, setRecentEmails] = useState([]);
   const [recentEmailsError, setRecentEmailsError] = useState('');
+  const [workspaceImportState, setWorkspaceImportState] = useState({ busy: false, message: '' });
   const [memoryProfile, setMemoryProfile] = useState(createEmptyMemoryProfile);
   const [isMemoryLoading, setIsMemoryLoading] = useState(true);
   const [memoryError, setMemoryError] = useState('');
+  const [openLeadCount, setOpenLeadCount] = useState(0);
+  const [firstCustomerInbox, setFirstCustomerInbox] = useState(() => INITIAL_SAMPLE_WORKSPACE.inbox);
+  const [firstCustomerJobs, setFirstCustomerJobs] = useState(() => INITIAL_SAMPLE_WORKSPACE.jobs);
+  const [firstCustomerActions, setFirstCustomerActions] = useState(() => INITIAL_SAMPLE_WORKSPACE.actions);
+  const [firstCustomerActivity, setFirstCustomerActivity] = useState(() => INITIAL_SAMPLE_WORKSPACE.activity);
+  const [selectedJobId, setSelectedJobId] = useState(() => INITIAL_SAMPLE_WORKSPACE.jobs[0]?.id ?? null);
 
   const sortedTasks = [...tasks].sort((l, r) => r.updatedAt - l.updatedAt);
   const visibleTasks = sortedTasks.filter((task) => taskFilter === 'all' ? true : task.status === taskFilter);
   const sortedApprovals = [...approvals].sort((l, r) => r.createdAt - l.createdAt);
   const activeTaskCount = tasks.filter((task) => task.status !== 'done').length;
   const businessName = trimToNull(memoryProfile[MEMORY_KEYS.businessName]) ?? DEFAULT_BUSINESS_NAME;
-  const profileMeta = trimToNull(memoryProfile[MEMORY_KEYS.businessType]) ?? 'Workspace';
   const isSettingsPanel = activePanel === 'settings';
+  const activePlan = normalisePlanKey(
+    normalisePlanKey(plan) === PLAN_KEYS.plus
+      ? plan
+      : trimToNull(memoryProfile[MEMORY_KEYS.plan]) ?? plan,
+  );
+  const activePlanConfig = PLAN_CONFIG[activePlan] ?? PLAN_CONFIG[PLAN_KEYS.starter];
+  const planIsPlus = isPlusPlan(activePlan);
 
   const combinedActivity = [
+    ...firstCustomerActivity,
     ...activity,
     ...recentEmails.map((email) => ({
       id: `gmail-${email.id}`,
@@ -100,10 +124,23 @@ export default function DashboardApp() {
   ].sort((l, r) => (r.createdAt ?? r.timestamp ?? 0) - (l.createdAt ?? l.timestamp ?? 0));
 
   const visibleActivity = filterActivityItems(combinedActivity, activityFilter);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const resolvedThisWeekCount = activity.filter(
-    (item) => (item.type === 'auto' || item.type === 'approved') && item.createdAt >= weekAgo,
-  ).length;
+  const visibleFirstCustomerActions = firstCustomerActions.filter((action) => !['approved', 'dismissed', 'queued', 'rejected', 'delayed'].includes(action.status));
+  const unlockedFirstCustomerActions = visibleFirstCustomerActions.filter((action) => !action.plusOnly || planIsPlus);
+  const firstCustomerJobsToday = firstCustomerJobs.filter((job) => String(job.scheduledFor || '').includes('Today'));
+  const firstCustomerQuoteFollowUps = firstCustomerJobs.filter((job) => job.status === 'quote_sent' && Number(job.quoteSentDaysAgo || 0) >= 5);
+  const firstCustomerMoneyAtRisk = firstCustomerJobs.reduce((total, job) => {
+    if (job.invoice?.status === 'overdue') return total + Number(job.invoice.amount || 0);
+    return total;
+  }, 0);
+  const todayOpenActionCount = sortedApprovals.length + unlockedFirstCustomerActions.length;
+  const todayStats = {
+    awaitingApproval: sortedApprovals.length,
+    newLeads: firstCustomerInbox.filter((message) => message.category === 'New lead').length + openLeadCount,
+    quoteFollowUps: firstCustomerQuoteFollowUps.length,
+    jobsToday: firstCustomerJobsToday.length,
+    moneyAtRisk: firstCustomerMoneyAtRisk,
+    calendarGaps: visibleFirstCustomerActions.filter((action) => action.type === 'calendar_gap').length,
+  };
 
   const sessionPayload = decodeSessionPayload(sessionToken);
   const tokenContactName = trimToNull(String(sessionPayload?.contact_name ?? '')) ?? '';
@@ -129,11 +166,6 @@ export default function DashboardApp() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     window.localStorage.setItem('olivander_theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     if (!tasks.length) { setExpandedTaskId(null); return; }
@@ -177,6 +209,24 @@ export default function DashboardApp() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadLeadSummary() {
+      if (!sessionToken) { setOpenLeadCount(0); return; }
+      try {
+        const response = await fetchProtected('/api/leads/summary');
+        if (response.ok) {
+          const data = await response.json();
+          if (!cancelled) {
+            setOpenLeadCount(data.total_active ?? 0);
+          }
+        }
+      } catch { /* silent */ }
+    }
+    void loadLeadSummary();
+    return () => { cancelled = true; };
+  }, [sessionToken]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadApprovals() {
       if (!sessionToken) { setApprovals([]); return; }
       try {
@@ -189,6 +239,24 @@ export default function DashboardApp() {
     void loadApprovals();
     return () => { cancelled = true; };
   }, [sessionToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadWorkspaceState() {
+      if (!sessionToken || demoMode) return;
+      try {
+        const response = await fetchProtected('/api/workspace/state');
+        if (response.status === 401 || !response.ok) return;
+        const data = await response.json();
+        if (cancelled || !data || typeof data !== 'object') return;
+        applyWorkspaceState(data, { replaceEmpty: true });
+      } catch {
+        // Keep the local demo workspace if persistence is unavailable.
+      }
+    }
+    void loadWorkspaceState();
+    return () => { cancelled = true; };
+  }, [sessionToken, demoMode]);
 
   useEffect(() => {
     function handleOauthMessage(event) {
@@ -205,10 +273,11 @@ export default function DashboardApp() {
         void syncGoogleConnectionStatus({ silent: true });
       }
 
-      // Xero OAuth — encrypted token payload
+      // Xero OAuth — backend sends xeroTokens: { access_token, refresh_token, expiry, tenant_id }
       if (payload.source === 'olivander-xero-oauth') {
-        if (payload.encrypted_token && payload.tenant_id) {
-          void storeXeroToken(payload.encrypted_token, payload.tenant_id);
+        const xeroTokens = payload.xeroTokens;
+        if (xeroTokens?.access_token && xeroTokens?.tenant_id) {
+          void storeXeroTokens(xeroTokens);
         }
         setXeroBusy(false);
       }
@@ -286,6 +355,264 @@ export default function DashboardApp() {
     setActivity((current) => [{ id: createId('activity'), type, title, description, createdAt: Date.now() }, ...current]);
   }
 
+  function addFirstCustomerActivity(type, title, description) {
+    setFirstCustomerActivity((current) => [{ id: createId('sample-activity'), type, title, description, createdAt: Date.now() }, ...current]);
+  }
+
+  function applySampleWorkspace() {
+    const sample = createFirstCustomerSampleWorkspace();
+    setFirstCustomerInbox(sample.inbox);
+    setFirstCustomerJobs(sample.jobs);
+    setFirstCustomerActions(sample.actions);
+    setFirstCustomerActivity(sample.activity);
+    setSelectedJobId(sample.jobs[0]?.id ?? null);
+    setApprovals((current) => current.filter((approval) => !approval.isDemo));
+  }
+
+  function applyWorkspaceState(data, { replaceEmpty = false } = {}) {
+    if (!data || typeof data !== 'object') return;
+
+    if (Array.isArray(data.messages) && (replaceEmpty || data.messages.length)) {
+      setFirstCustomerInbox(data.messages);
+    }
+
+    if (Array.isArray(data.jobs) && (replaceEmpty || data.jobs.length)) {
+      setFirstCustomerJobs(data.jobs);
+      setSelectedJobId((current) => current && data.jobs.some((job) => job.id === current) ? current : data.jobs[0]?.id ?? null);
+    }
+
+    if (Array.isArray(data.actions) && (replaceEmpty || data.actions.length)) {
+      setFirstCustomerActions(data.actions);
+      const queuedApprovals = data.actions
+        .filter((action) => action.status === 'queued')
+        .map((action) => buildDemoApprovalFromAction(action, { id: `approval-${action.id}` }));
+
+      setApprovals((current) => {
+        const nonWorkspaceApprovals = current.filter((approval) => !approval.workspaceActionId);
+        if (!queuedApprovals.length) return nonWorkspaceApprovals;
+        const existingIds = new Set(nonWorkspaceApprovals.map((approval) => approval.id));
+        return [
+          ...queuedApprovals.filter((approval) => !existingIds.has(approval.id)),
+          ...nonWorkspaceApprovals,
+        ];
+      });
+    }
+  }
+
+  async function loadRealWorkspaceState() {
+    if (!sessionToken) return;
+    try {
+      const response = await fetchProtected('/api/workspace/state');
+      if (response.status === 401 || !response.ok) return;
+      const data = await response.json();
+      applyWorkspaceState(data, { replaceEmpty: true });
+    } catch {
+      // Keep whatever is on screen if the persisted workspace is unavailable.
+    }
+  }
+
+  function handleResetDemoWorkspace() {
+    applySampleWorkspace();
+    setWorkspaceImportState({ busy: false, message: '' });
+  }
+
+  function handleDemoModeChange(nextDemoMode) {
+    setDemoMode(nextDemoMode);
+    window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, nextDemoMode ? 'true' : 'false');
+    setWorkspaceImportState({ busy: false, message: '' });
+
+    if (nextDemoMode) {
+      applySampleWorkspace();
+      requestPanel('home');
+      return;
+    }
+
+    setFirstCustomerInbox([]);
+    setFirstCustomerJobs([]);
+    setFirstCustomerActions([]);
+    setFirstCustomerActivity([]);
+    setSelectedJobId(null);
+    setApprovals((current) => current.filter((approval) => !approval.isDemo));
+    void loadRealWorkspaceState();
+    requestPanel('home');
+  }
+
+  async function handleSyncWorkspaceInbox() {
+    if (demoMode) return;
+    if (!sessionToken) {
+      openSettings('connections');
+      return;
+    }
+
+    setWorkspaceImportState({ busy: true, message: '' });
+    try {
+      const response = await fetchProtected('/api/workspace/inbox/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxResults: RECENT_EMAILS_MAX }),
+      });
+      if (response.status === 401) return;
+      if (!response.ok) throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+      const result = await response.json();
+      await loadRealWorkspaceState();
+      const imported = Number(result.imported || 0);
+      const duplicate = Number(result.skipped?.duplicate || 0);
+      const nonActionable = Number(result.skipped?.non_actionable || 0);
+      const detail = [
+        duplicate ? `${duplicate} already imported` : '',
+        nonActionable ? `${nonActionable} skipped` : '',
+      ].filter(Boolean).join(', ');
+      setWorkspaceImportState({
+        busy: false,
+        message: imported
+          ? `Imported ${imported} Gmail message${imported === 1 ? '' : 's'}${detail ? `; ${detail}` : ''}.`
+          : `No new actionable Gmail${detail ? `; ${detail}` : ''}.`,
+      });
+      if (imported) {
+        addFirstCustomerActivity('draft', 'Gmail inbox synced', `${imported} message${imported === 1 ? '' : 's'} imported`);
+      }
+    } catch {
+      setWorkspaceImportState({ busy: false, message: 'Could not sync Gmail. Check the connection.' });
+    }
+  }
+
+  function buildDemoApprovalFromAction(action, overrides = {}) {
+    return {
+      id: overrides.id ?? createId('approval'),
+      taskId: null,
+      sourceEmailId: null,
+      senderName: action.customer ?? 'Customer',
+      senderEmail: action.email ?? 'unknown@example.co.nz',
+      subject: overrides.subject ?? action.title,
+      createdAt: Date.now(),
+      tier: 'Tier 3',
+      why: action.reason ?? 'Customer-facing action requires owner approval.',
+      agentResponse: overrides.draft ?? action.draft ?? '',
+      status: 'review',
+      isDemo: true,
+      workspaceActionId: action.id ?? null,
+      sourceEmail: {
+        senderName: action.customer ?? 'Customer',
+        senderEmail: action.email ?? 'unknown@example.co.nz',
+        subject: overrides.subject ?? action.title,
+        body: action.detail ?? '',
+        fullBody: action.detail ?? '',
+      },
+    };
+  }
+
+  function queueDemoApproval(action, options = {}) {
+    const approval = buildDemoApprovalFromAction(action, options);
+    setApprovals((current) => [approval, ...current]);
+    if (action.id) {
+      setFirstCustomerActions((current) => current.map((item) => (
+        item.id === action.id ? { ...item, status: 'queued' } : item
+      )));
+      void persistWorkspacePatch('actions', action.id, { status: 'queued' });
+    }
+    addFirstCustomerActivity('pending', 'Approval queued', approval.subject);
+    requestPanel('approvals');
+  }
+
+  function handlePlanChange(nextPlan) {
+    const resolvedPlan = normalisePlanKey(nextPlan);
+    setPlan(resolvedPlan);
+    window.localStorage.setItem(PLAN_STORAGE_KEY, resolvedPlan);
+    void saveMemoryKey(MEMORY_KEYS.plan, resolvedPlan).catch(() => {});
+    addFirstCustomerActivity('draft', 'Plan updated', PLAN_CONFIG[resolvedPlan]?.label ?? 'Admin Starter');
+  }
+
+  async function persistWorkspaceCreate(kind, payload) {
+    if (!sessionToken || demoMode) return null;
+    try {
+      const response = await fetchProtected(`/api/workspace/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401 || !response.ok) return null;
+      return response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function persistWorkspacePatch(kind, id, payload) {
+    if (!sessionToken || demoMode || !isPersistedWorkspaceId(id)) return null;
+    try {
+      const response = await fetchProtected(`/api/workspace/${kind}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401 || !response.ok) return null;
+      return response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function isPersistedWorkspaceId(id) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id || ''));
+  }
+
+  function normaliseJobPayload(job) {
+    return {
+      customer: job.customer,
+      email: job.email || null,
+      phone: job.phone || null,
+      address: job.address || null,
+      jobType: job.jobType || 'Manual job',
+      status: job.status || 'new_lead',
+      value: Number(job.value || 0),
+      scheduledFor: job.scheduledFor || null,
+      nextAction: job.nextAction || null,
+      quoteSentDaysAgo: Number.isFinite(Number(job.quoteSentDaysAgo)) ? Number(job.quoteSentDaysAgo) : null,
+      invoice: job.invoice || null,
+      notes: Array.isArray(job.notes) ? job.notes : [],
+      timeline: Array.isArray(job.timeline) ? job.timeline : [],
+    };
+  }
+
+  function normaliseMessagePayload(message) {
+    return {
+      customer: message.customer,
+      email: message.email || null,
+      phone: message.phone || null,
+      subject: message.subject || 'Untitled message',
+      source: message.source || 'manual',
+      sourceEmailId: message.sourceEmailId || null,
+      sourceThreadId: message.sourceThreadId || null,
+      category: message.category || 'Needs reply',
+      receivedAt: message.receivedAt || null,
+      jobType: message.jobType || null,
+      address: message.address || null,
+      body: message.body || '',
+      interpretation: message.interpretation || null,
+      draft: message.draft || null,
+      plusOnlyReason: message.plusOnlyReason || null,
+    };
+  }
+
+  function normaliseActionPayload(action) {
+    return {
+      type: action.type || 'reply',
+      title: action.title,
+      customer: action.customer || null,
+      email: action.email || null,
+      sourceMessageId: action.sourceMessageId || null,
+      jobId: action.jobId || null,
+      priority: action.priority || 'medium',
+      reason: action.reason || null,
+      detail: action.detail || null,
+      draft: action.draft || null,
+      status: action.status || 'open',
+      plusOnly: Boolean(action.plusOnly),
+      lockedReason: action.lockedReason || null,
+      value: Number.isFinite(Number(action.value)) ? Number(action.value) : null,
+    };
+  }
+
   function buildAuthHeaders(headers = {}) {
     const nextHeaders = new Headers(headers);
     if (sessionToken) nextHeaders.set('Authorization', `Bearer ${sessionToken}`);
@@ -308,6 +635,13 @@ export default function DashboardApp() {
   }
 
   async function syncGoogleConnectionStatus({ silent = false } = {}) {
+    if (!sessionToken) {
+      setGoogleConnected(false);
+      setXeroConnected(false);
+      setBusinessContactName('');
+      setSessionBusinessName('');
+      return false;
+    }
     try {
       const response = await fetch(buildBackendUrl('/api/connections'), { credentials: 'include', headers: buildAuthHeaders() });
       if (response.status === 401) {
@@ -329,12 +663,12 @@ export default function DashboardApp() {
     }
   }
 
-  async function storeXeroToken(encryptedToken, tenantId) {
+  async function storeXeroTokens(xeroTokens) {
     try {
       const response = await fetchProtected('/api/connections/xero/store', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encrypted_token: encryptedToken, tenant_id: tenantId }),
+        body: JSON.stringify(xeroTokens),
       });
       if (response.ok) {
         setXeroConnected(true);
@@ -549,6 +883,216 @@ export default function DashboardApp() {
     } finally { setIsPlanning(false); }
   }
 
+  function handleFirstCustomerActionApprove(action) {
+    if (action.plusOnly && !planIsPlus) { openSettings('plan'); return; }
+    queueDemoApproval(action);
+  }
+
+  function handleFirstCustomerActionDelay(action, delayOption = { label: 'Tomorrow' }) {
+    const delayedUntil = delayOption.label || 'Tomorrow';
+    setFirstCustomerActions((current) => current.map((item) => (
+      item.id === action.id ? { ...item, status: 'delayed', delayedUntil } : item
+    )));
+    void persistWorkspacePatch('actions', action.id, { status: 'delayed' });
+    addFirstCustomerActivity('pending', 'Action delayed', `${action.title} - ${delayedUntil}`);
+  }
+
+  function handleFirstCustomerActionDismiss(action) {
+    setFirstCustomerActions((current) => current.map((item) => (
+      item.id === action.id ? { ...item, status: 'dismissed' } : item
+    )));
+    void persistWorkspacePatch('actions', action.id, { status: 'dismissed' });
+    addFirstCustomerActivity('rejected', 'Action dismissed', action.title);
+  }
+
+  function handleFirstCustomerActionEdit(action) {
+    const task = buildTaskFromRequest(action.title, {
+      description: action.detail,
+      draftPreview: action.draft ? { label: 'Draft', text: action.draft } : null,
+      draftContent: action.draft ?? null,
+      planSummary: action.reason,
+    });
+    setTasks((current) => [task, ...current]);
+    setExpandedTaskId(task.id);
+    addFirstCustomerActivity('draft', 'Draft opened for editing', action.title);
+    requestPanel('tasks');
+  }
+
+  function handleOpenJob(jobId) {
+    if (jobId) setSelectedJobId(jobId);
+    requestPanel('jobs');
+  }
+
+  async function handleCreateJobFromMessage(message) {
+    const jobId = `job-${message.id}`;
+    const nextJob = {
+      id: jobId,
+      customer: message.customer,
+      email: message.email,
+      phone: message.phone ?? '',
+      address: message.address ?? '',
+      jobType: message.jobType || 'Customer job',
+      status: message.category === 'New lead' ? 'new_lead' : 'info_needed',
+      value: 0,
+      scheduledFor: '',
+      nextAction: message.interpretation,
+      notes: [`Created from inbox message: ${message.subject}`],
+      timeline: ['Message reviewed', 'Job created'],
+    };
+    setFirstCustomerJobs((current) => {
+      if (current.some((job) => job.id === jobId)) return current;
+      return [nextJob, ...current];
+    });
+    setSelectedJobId(jobId);
+    addFirstCustomerActivity('draft', 'Job created', `${message.customer} - ${message.jobType}`);
+    requestPanel('jobs');
+    const persisted = await persistWorkspaceCreate('jobs', normaliseJobPayload(nextJob));
+    if (persisted?.id) {
+      setFirstCustomerJobs((current) => current.map((job) => job.id === jobId ? persisted : job));
+      setSelectedJobId(persisted.id);
+    }
+  }
+
+  async function handleQueueReplyFromMessage(message) {
+    const action = {
+      id: null,
+      title: `Reply to ${message.customer}: ${message.subject}`,
+      customer: message.customer,
+      email: message.email,
+      sourceMessageId: message.id,
+      type: 'reply',
+      priority: message.category === 'New lead' ? 'high' : 'medium',
+      reason: message.interpretation,
+      detail: message.body,
+      draft: message.draft,
+      status: 'queued',
+    };
+    const persisted = await persistWorkspaceCreate('actions', normaliseActionPayload(action));
+    queueDemoApproval(persisted ?? action);
+  }
+
+  function handleDismissInboxMessage(messageId) {
+    setFirstCustomerInbox((current) => current.filter((message) => message.id !== messageId));
+    void persistWorkspacePatch('messages', messageId, { status: 'dismissed' });
+    addFirstCustomerActivity('rejected', 'Inbox card dismissed', messageId);
+  }
+
+  async function handleManualMessage(message) {
+    const action = {
+      id: `action-${message.id}`,
+      type: 'reply',
+      title: `Reply to ${message.customer}`,
+      customer: message.customer,
+      email: message.email,
+      sourceMessageId: message.id,
+      priority: message.category === 'New lead' ? 'high' : 'medium',
+      reason: message.interpretation,
+      detail: 'Manual message added to the workspace.',
+      draft: message.draft,
+      plusOnly: message.category === 'Payment question',
+      lockedReason: 'Payment and invoice workflows are included in Admin Plus.',
+    };
+    setFirstCustomerInbox((current) => [message, ...current]);
+    setFirstCustomerActions((current) => [action, ...current]);
+    addFirstCustomerActivity('draft', 'Manual message added', message.subject);
+    const persistedMessage = await persistWorkspaceCreate('messages', normaliseMessagePayload(message));
+    if (!persistedMessage?.id) return;
+    const persistedAction = await persistWorkspaceCreate('actions', normaliseActionPayload({
+      ...action,
+      sourceMessageId: persistedMessage.id,
+    }));
+    setFirstCustomerInbox((current) => current.map((item) => item.id === message.id ? persistedMessage : item));
+    if (persistedAction?.id) {
+      setFirstCustomerActions((current) => current.map((item) => item.id === action.id ? persistedAction : item));
+    }
+  }
+
+  function handleJobStageChange(jobId, status) {
+    const nextTimelineItem = `Moved to ${status.replace(/_/g, ' ')}`;
+    const currentJob = firstCustomerJobs.find((job) => job.id === jobId);
+    const nextTimeline = [...(currentJob?.timeline || []), nextTimelineItem];
+    setFirstCustomerJobs((current) => current.map((job) => (
+      job.id === jobId
+        ? { ...job, status, timeline: nextTimeline }
+        : job
+    )));
+    void persistWorkspacePatch('jobs', jobId, { status, timeline: nextTimeline });
+    addFirstCustomerActivity('draft', 'Job status updated', status.replace(/_/g, ' '));
+  }
+
+  async function handleAddManualJob(job) {
+    const id = createId('job');
+    const nextJob = {
+      id,
+      ...job,
+      email: '',
+      phone: '',
+      status: 'new_lead',
+      value: 0,
+      scheduledFor: '',
+      nextAction: 'Set the next action.',
+      notes: ['Manual job created.'],
+      timeline: ['Job created manually'],
+    };
+    setFirstCustomerJobs((current) => [nextJob, ...current]);
+    setSelectedJobId(id);
+    addFirstCustomerActivity('draft', 'Manual job created', `${job.customer} - ${job.jobType}`);
+    const persisted = await persistWorkspaceCreate('jobs', normaliseJobPayload(nextJob));
+    if (persisted?.id) {
+      setFirstCustomerJobs((current) => current.map((item) => item.id === id ? persisted : item));
+      setSelectedJobId(persisted.id);
+    }
+  }
+
+  function handleAddJobNote(jobId, note) {
+    const currentJob = firstCustomerJobs.find((job) => job.id === jobId);
+    const nextNotes = [...(currentJob?.notes || []), note];
+    const nextTimeline = [...(currentJob?.timeline || []), 'Note added'];
+    setFirstCustomerJobs((current) => current.map((job) => (
+      job.id === jobId
+        ? { ...job, notes: nextNotes, timeline: nextTimeline }
+        : job
+    )));
+    void persistWorkspacePatch('jobs', jobId, { notes: nextNotes, timeline: nextTimeline });
+    addFirstCustomerActivity('draft', 'Job note added', note);
+  }
+
+  async function handleQueueJobFollowUp(job) {
+    if (!demoMode && sessionToken && isPersistedWorkspaceId(job.id)) {
+      try {
+        const response = await fetchProtected(`/api/workspace/jobs/${job.id}/follow-up`, {
+          method: 'POST',
+        });
+        if (response.status !== 401 && response.ok) {
+          const action = await response.json();
+          queueDemoApproval(action);
+          return;
+        }
+      } catch {
+        // Fall back to a local draft so the owner can still review the action.
+      }
+    }
+
+    const draft = job.status === 'quote_sent'
+      ? `Hi ${job.customer.split(' ')[0] || 'there'},\n\nJust checking in on the quote I sent through. Happy to answer any questions or adjust timing if needed.\n\nThanks,\nOlivander Electrical`
+      : `Hi ${job.customer.split(' ')[0] || 'there'},\n\nJust following up on ${job.jobType}. Let me know if anything has changed or if you need anything else from me.\n\nThanks,\nOlivander Electrical`;
+    const action = {
+      id: null,
+      title: `Follow up ${job.customer}`,
+      customer: job.customer,
+      email: job.email,
+      type: 'follow_up',
+      jobId: job.id,
+      priority: job.status === 'quote_sent' ? 'medium' : 'low',
+      reason: job.nextAction || 'Job has a visible next action.',
+      detail: job.jobType,
+      draft,
+      status: 'queued',
+    };
+    const persisted = await persistWorkspaceCreate('actions', normaliseActionPayload(action));
+    queueDemoApproval(persisted ?? action);
+  }
+
   function isEmailAllowedByFilters(email) {
     const patterns = (memoryProfile[MEMORY_KEYS.blockedSenderPatterns] || '').split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
     const senderEmail = (email.senderEmail || '').toLowerCase();
@@ -598,7 +1142,7 @@ export default function DashboardApp() {
     setRemovingApprovals((current) => ({ ...current, [approval.id]: 'approve' }));
     pulseProcessing(700);
     try {
-      if (sessionToken) {
+      if (sessionToken && !approval.isDemo) {
         let response;
         if (approval.backendId) {
           response = await fetchProtected(`/api/actions/${approval.backendId}/approve`, { method: 'POST' });
@@ -612,6 +1156,12 @@ export default function DashboardApp() {
         setRemovingApprovals((current) => { const next = { ...current }; delete next[approval.id]; return next; });
       }, APPROVAL_REMOVE_MS);
       setTasks((current) => current.map((task) => task.id === approval.taskId ? { ...task, status: 'done', updatedAt: Date.now() } : task));
+      if (approval.workspaceActionId) {
+        setFirstCustomerActions((current) => current.map((action) => (
+          action.id === approval.workspaceActionId ? { ...action, status: 'approved' } : action
+        )));
+        void persistWorkspacePatch('actions', approval.workspaceActionId, { status: 'approved' });
+      }
       addActivityItem('approved', 'Approved', approval.subject);
     } catch {
       setRemovingApprovals((current) => { const next = { ...current }; delete next[approval.id]; return next; });
@@ -621,7 +1171,7 @@ export default function DashboardApp() {
   function handleRejectApproval(approval) {
     if (removingApprovals[approval.id]) return;
     setRemovingApprovals((current) => ({ ...current, [approval.id]: 'reject' }));
-    if (approval.backendId && sessionToken) {
+    if (approval.backendId && sessionToken && !approval.isDemo) {
       void fetchProtected(`/api/actions/${approval.backendId}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }).catch(() => {});
     }
     window.setTimeout(() => {
@@ -629,6 +1179,12 @@ export default function DashboardApp() {
       setRemovingApprovals((current) => { const next = { ...current }; delete next[approval.id]; return next; });
     }, APPROVAL_REMOVE_MS);
     setTasks((current) => current.map((task) => task.id === approval.taskId ? { ...task, status: 'done', updatedAt: Date.now() } : task));
+    if (approval.workspaceActionId) {
+      setFirstCustomerActions((current) => current.map((action) => (
+        action.id === approval.workspaceActionId ? { ...action, status: 'rejected' } : action
+      )));
+      void persistWorkspacePatch('actions', approval.workspaceActionId, { status: 'rejected' });
+    }
     addActivityItem('rejected', 'Rejected', approval.subject);
   }
 
@@ -636,8 +1192,14 @@ export default function DashboardApp() {
     const trimmed = nextText.trim();
     if (!trimmed) return;
     setApprovals((current) => current.map((item) => item.id === approval.id ? { ...item, agentResponse: trimmed, status: 'edited' } : item));
-    if (approval.backendId && sessionToken) {
+    if (approval.backendId && sessionToken && !approval.isDemo) {
       void fetchProtected(`/api/actions/${approval.backendId}/edit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'edit', edited_content: trimmed }) }).catch(() => {});
+    }
+    if (approval.workspaceActionId) {
+      setFirstCustomerActions((current) => current.map((action) => (
+        action.id === approval.workspaceActionId ? { ...action, draft: trimmed } : action
+      )));
+      void persistWorkspacePatch('actions', approval.workspaceActionId, { draft: trimmed });
     }
     setMemoryProfile((current) => {
       const currentCount = parseInt(current[MEMORY_KEYS.replyToneEdits] || '0', 10) || 0;
@@ -750,14 +1312,16 @@ export default function DashboardApp() {
         xeroConnected={xeroConnected}
         googleBusy={googleBusy}
         xeroBusy={xeroBusy}
+        authToken={sessionToken}
       />
     );
   }
 
   const sidebarItems = [
-    { id: 'home', label: 'Home', icon: <HouseIcon /> },
+    { id: 'home', label: 'Today', icon: <HouseIcon />, badge: todayOpenActionCount || null },
+    { id: 'inbox', label: 'Inbox', icon: <MailIcon />, badge: firstCustomerInbox.length || null },
+    { id: 'jobs', label: 'Jobs', icon: <LeadPipelineIcon />, badge: firstCustomerJobsToday.length || null },
     { id: 'tasks', label: 'Tasks', icon: <TaskListIcon />, badge: activeTaskCount || null },
-    { id: 'approvals', label: 'Approvals', icon: <CheckCircleIcon />, badge: sortedApprovals.length || null },
     { id: 'activity', label: 'Activity', icon: <LinesIcon /> },
   ];
   const visibleSidebarItems = isSettingsPanel
@@ -813,10 +1377,14 @@ export default function DashboardApp() {
 
           <button type="button" className="profile-trigger" aria-expanded={profileMenuState === 'open'} onClick={toggleProfileMenu}>
             <span className="profile-trigger__avatar">
-              {businessName.split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || 'O'}
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="8" cy="5" r="3" fill="currentColor"/>
+                <path d="M2 13c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
             </span>
             <span className="profile-trigger__copy">
               <span className="profile-trigger__name">{businessName}</span>
+              <span className="profile-trigger__plan">{activePlanConfig.label}</span>
             </span>
           </button>
         </div>
@@ -826,24 +1394,66 @@ export default function DashboardApp() {
         <header className="top-bar">
           <div className="top-bar__inner">
             <div className="top-bar__title">{currentTitle}</div>
+            <div className="top-bar__status">
+              <span className={`workspace-mode-pill ${demoMode ? 'is-demo' : 'is-real'}`.trim()}>
+                {demoMode ? 'Demo mode' : 'Real workspace'}
+              </span>
+            </div>
           </div>
         </header>
 
         <div className="panel-scroll">
           <div ref={panelFrameRef} className="panel-frame">
             {activePanel === 'home' ? (
-              <HomePanel
-                currentTime={currentTime}
-                headlineVariant={homeHeadlineVariant}
-                greetingName={greetingName}
-                homeInput={homeInput}
-                onHomeInputChange={setHomeInput}
-                onHomeSubmit={(event) => { event.preventDefault(); void submitInstruction(homeInput, 'home'); }}
-                onChipClick={setHomeInput}
-                onStatClick={requestPanel}
-                awaitingApprovalCount={sortedApprovals.length}
-                activeTaskCount={activeTaskCount}
-                resolvedThisWeekCount={resolvedThisWeekCount}
+              <TodayPanel
+                plan={activePlan}
+                demoMode={demoMode}
+                canUseRealWorkspace={Boolean(sessionToken)}
+                actionCards={visibleFirstCustomerActions}
+                jobsToday={firstCustomerJobsToday}
+                recentActivity={combinedActivity}
+                stats={todayStats}
+                onActionApprove={handleFirstCustomerActionApprove}
+                onActionDelay={handleFirstCustomerActionDelay}
+                onActionDismiss={handleFirstCustomerActionDismiss}
+                onActionEdit={handleFirstCustomerActionEdit}
+                onOpenJob={handleOpenJob}
+                onNavigate={requestPanel}
+                onUpgrade={() => openSettings('plan')}
+                onResetDemo={handleResetDemoWorkspace}
+                onDemoModeChange={handleDemoModeChange}
+              />
+            ) : null}
+
+            {activePanel === 'inbox' ? (
+              <InboxPanel
+                messages={firstCustomerInbox}
+                planIsPlus={planIsPlus}
+                demoMode={demoMode}
+                googleConnected={googleConnected}
+                isSyncingInbox={workspaceImportState.busy}
+                inboxSyncMessage={workspaceImportState.message}
+                onCreateJob={handleCreateJobFromMessage}
+                onQueueReply={handleQueueReplyFromMessage}
+                onDismiss={handleDismissInboxMessage}
+                onManualMessage={handleManualMessage}
+                onSyncInbox={() => void handleSyncWorkspaceInbox()}
+                onOpenConnections={() => openSettings('connections')}
+                onUpgrade={() => openSettings('plan')}
+              />
+            ) : null}
+
+            {activePanel === 'jobs' ? (
+              <JobsPanel
+                jobs={firstCustomerJobs}
+                plan={activePlan}
+                selectedJobId={selectedJobId}
+                onSelectJob={setSelectedJobId}
+                onStageChange={handleJobStageChange}
+                onAddJob={handleAddManualJob}
+                onAddNote={handleAddJobNote}
+                onQueueFollowUp={handleQueueJobFollowUp}
+                onUpgrade={() => openSettings('plan')}
               />
             ) : null}
 
@@ -887,6 +1497,12 @@ export default function DashboardApp() {
               />
             ) : null}
 
+            {activePanel === 'leads' ? (
+              <LeadPipelinePanel
+                fetchProtected={fetchProtected}
+              />
+            ) : null}
+
             {activePanel === 'settings' ? (
               <SettingsPanel
                 activeSection={settingsSection}
@@ -902,6 +1518,8 @@ export default function DashboardApp() {
                 isMemoryLoading={isMemoryLoading}
                 memoryError={memoryError}
                 onSaveMemory={saveMemoryKey}
+                plan={activePlan}
+                onPlanChange={handlePlanChange}
               />
             ) : null}
           </div>

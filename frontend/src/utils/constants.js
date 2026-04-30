@@ -3,9 +3,11 @@ export const SESSION_KEY = 'olivander_session';
 export const PROCESSED_EMAIL_IDS_KEY = 'olivander_processed_email_ids';
 
 export const PANEL_TITLES = {
-  home: 'Home',
+  home: 'Today',
+  inbox: 'Inbox',
+  jobs: 'Jobs',
   tasks: 'Tasks',
-  approvals: 'Approvals',
+  approvals: 'Approval Centre',
   activity: 'Activity',
   settings: 'Settings',
 };
@@ -53,6 +55,7 @@ export const MEMORY_KEYS = {
   noShowHandling: 'no_show_handling',
   blockedSenderPatterns: 'blocked_sender_patterns',
   activeCategories: 'active_categories',
+  plan: 'plan',
 };
 
 export const BUSINESS_PROFILE_ROWS = [
@@ -78,9 +81,11 @@ export const CATEGORY_OPTIONS = [
 
 export const SETTINGS_SECTIONS_CONFIG = [
   { id: 'connections', label: 'Connections' },
+  { id: 'plan', label: 'Plan' },
   { id: 'memory', label: 'Memory' },
   { id: 'filters', label: 'Filters' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'privacy', label: 'Privacy' },
 ];
 
 export const DEFAULT_POPUP_CLOSE_MS = 120;

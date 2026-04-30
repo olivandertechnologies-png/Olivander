@@ -235,6 +235,14 @@ export function FunnelIcon() {
   );
 }
 
+export function ShieldIcon() {
+  return (
+    <IconBase>
+      <path d="M8 2.4 2.5 4.5v4c0 3.4 2.4 6.5 5.5 7.1C11.1 15 13.5 11.9 13.5 8.5v-4Z" />
+    </IconBase>
+  );
+}
+
 export function GoogleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 28 28" className="connection-logo">
@@ -254,6 +262,17 @@ export function GoogleIcon() {
         fill="#ea4335"
         d="M14 7.58c1.52 0 2.89.52 3.96 1.54l2.97-2.97C19.15 4.49 16.8 3.5 14 3.5a10.38 10.38 0 0 0-9.26 5.66l3.47 2.69c.8-2.45 3.08-4.27 5.79-4.27Z"
       />
+    </svg>
+  );
+}
+
+export function LeadPipelineIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="3.5" cy="4" r="1.75" stroke="currentColor" strokeWidth="1.4"/>
+      <circle cx="12.5" cy="4" r="1.75" stroke="currentColor" strokeWidth="1.4"/>
+      <circle cx="8" cy="12" r="1.75" stroke="currentColor" strokeWidth="1.4"/>
+      <path d="M5.25 4h5.5M3.5 5.75l4.5 4.5M12.5 5.75L8 10.25" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
     </svg>
   );
 }

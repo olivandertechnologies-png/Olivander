@@ -188,6 +188,74 @@ Rules:
             raise ValueError(f"AI returned invalid JSON for invoice extraction: {result_text[:200]}")
         return data
 
+    def extract_quote_details(
+        self,
+        description: str,
+        business_context: dict[str, Any],
+        business_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Extract structured quote details from a natural language instruction.
+
+        Returns a dict with keys:
+            contact_name, contact_email, title, line_items (list of
+            {description, quantity, unit_amount_excl_gst}),
+            gst_registered, expiry_date_days, terms, notes.
+
+        Raises ValueError if the AI returns unparseable JSON.
+        """
+        gst_registered = str(business_context.get("gst_registered", "")).lower() in (
+            "true", "yes", "1"
+        )
+        business_name = business_context.get("business_name") or "this business"
+        payment_terms = business_context.get("payment_terms") or "Invoice on completion, 14 days"
+
+        prompt = f"""You are extracting quote details from a natural language instruction for {business_name}.
+GST registered: {"yes — 15% NZ GST applies" if gst_registered else "no"}
+Currency: NZD
+Standard payment terms: {payment_terms}
+
+Quote instruction:
+{description}
+
+Return ONLY valid JSON (no markdown fences):
+{{
+  "contact_name": "string",
+  "contact_email": "string or null",
+  "title": "string (e.g. 'Quote for deck rebuild')",
+  "line_items": [
+    {{
+      "description": "string",
+      "quantity": 1.0,
+      "unit_amount_excl_gst": 0.0
+    }}
+  ],
+  "gst_registered": true,
+  "expiry_date_days": 30,
+  "terms": "string (payment terms for this quote)",
+  "notes": "string or null"
+}}
+
+Rules:
+- unit_amount_excl_gst is the price BEFORE GST (15%)
+- If amounts include GST: divide by 1.15 and round to 2 decimal places
+- expiry_date_days: how many days the quote is valid (default 30)
+- title: short description of what this quote is for
+- gst_registered: {str(gst_registered).lower()}""".strip()
+
+        result_text = self.complete(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=500,
+            operation="extract_quote",
+            business_id=business_id,
+        )
+
+        from agent.draft import extract_json_object  # lazy import
+        data = extract_json_object(result_text)
+        if not data:
+            raise ValueError(f"AI returned invalid JSON for quote extraction: {result_text[:200]}")
+        return data
+
     def _log_usage(
         self,
         business_id: str | None,

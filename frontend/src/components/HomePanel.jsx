@@ -20,6 +20,27 @@ function renderHeadline(variant, name) {
   return cleanName ? variant.withName(cleanName) : variant.withoutName;
 }
 
+function buildLeadNarrative(summary) {
+  if (!summary) return null;
+  const { total_active, stale_quotes, unreplied_enquiries, won_this_month, closed_this_month } = summary;
+  if (!total_active) return null;
+
+  const parts = [];
+  parts.push(`You have ${total_active} open lead${total_active !== 1 ? 's' : ''}.`);
+
+  if (stale_quotes > 0) {
+    parts.push(`${stale_quotes} quote${stale_quotes !== 1 ? 's' : ''} pending response — over 5 days old.`);
+  }
+  if (unreplied_enquiries > 0) {
+    parts.push(`${unreplied_enquiries} new ${unreplied_enquiries !== 1 ? 'enquiries have' : 'enquiry has'} not been replied to yet.`);
+  }
+  if (closed_this_month > 0) {
+    parts.push(`Conversion this month: ${won_this_month} of ${closed_this_month} quotes accepted.`);
+  }
+
+  return parts.join(' ');
+}
+
 export default function HomePanel({
   currentTime,
   headlineVariant,
@@ -32,6 +53,8 @@ export default function HomePanel({
   awaitingApprovalCount,
   activeTaskCount,
   resolvedThisWeekCount,
+  openLeadCount,
+  leadSummary,
 }) {
   const subtitle =
     awaitingApprovalCount > 0
@@ -60,7 +83,15 @@ export default function HomePanel({
           <div className="stat-card__label">Resolved this week</div>
           <div className="stat-card__value tone-success">{resolvedThisWeekCount}</div>
         </button>
+        <button type="button" className="stat-card" onClick={() => onStatClick('leads')}>
+          <div className="stat-card__label">Open leads</div>
+          <div className="stat-card__value">{openLeadCount ?? 0}</div>
+        </button>
       </div>
+
+      {buildLeadNarrative(leadSummary) ? (
+        <p className="lead-narrative">{buildLeadNarrative(leadSummary)}</p>
+      ) : null}
 
       <section className="instruction-card">
         <form className="instruction-card__row" onSubmit={onHomeSubmit}>

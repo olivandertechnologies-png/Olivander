@@ -1,5 +1,6 @@
 import base64
 import logging
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parseaddr
@@ -163,13 +164,32 @@ def send_html_message(
     html_body: str,
     text_body: str,
     thread_id: str | None = None,
+    pdf_bytes: bytes | None = None,
+    pdf_filename: str = "Quote.pdf",
 ) -> dict[str, Any]:
-    """Send an HTML email (with plain-text fallback) via Gmail API."""
-    message = MIMEMultipart("alternative")
-    message["To"] = to_email
-    message["Subject"] = subject
-    message.attach(MIMEText(text_body, "plain"))
-    message.attach(MIMEText(html_body, "html"))
+    """Send an HTML email (with plain-text fallback) via Gmail API.
+
+    If pdf_bytes is provided the message is sent as multipart/mixed with the
+    PDF attached; otherwise it is sent as multipart/alternative.
+    """
+    if pdf_bytes:
+        outer = MIMEMultipart("mixed")
+        outer["To"] = to_email
+        outer["Subject"] = subject
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(text_body, "plain"))
+        alt.attach(MIMEText(html_body, "html"))
+        outer.attach(alt)
+        attachment = MIMEApplication(pdf_bytes, _subtype="pdf")
+        attachment.add_header("Content-Disposition", "attachment", filename=pdf_filename)
+        outer.attach(attachment)
+        message = outer
+    else:
+        message = MIMEMultipart("alternative")
+        message["To"] = to_email
+        message["Subject"] = subject
+        message.attach(MIMEText(text_body, "plain"))
+        message.attach(MIMEText(html_body, "html"))
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     payload: dict[str, Any] = {"raw": encoded_message}

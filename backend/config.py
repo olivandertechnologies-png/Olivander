@@ -59,6 +59,11 @@ XERO_REDIRECT_URI = (
     or "http://localhost:8000/auth/xero/callback"
 )
 
+BACKEND_ORIGIN = (
+    get_secret("BACKEND_ORIGIN", "https://olivander-api.onrender.com")
+    or "https://olivander-api.onrender.com"
+)
+
 GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
