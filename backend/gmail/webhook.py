@@ -2,14 +2,15 @@ import base64
 import hmac
 import json
 import logging
-import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent.classify import SKIP_LABELS, classify_email
 from agent.draft import draft_reply
-from config import FRONTEND_ORIGIN, WEBHOOK_SECRET
+from agent.execution_plan import build_execution_plan
+from agent.rag import retrieve_context_chunks
+from config import BACKEND_ORIGIN, FRONTEND_ORIGIN, WEBHOOK_SECRET
 from db.supabase import (
     approval_exists_for_message,
     create_approval,
@@ -112,6 +113,9 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
             "services": memory.get("services") or "",
         }
 
+        # Retrieve relevant memory chunks for this classification (RAG)
+        retrieved_context = retrieve_context_chunks(business_id, classification)
+
         # For booking requests, propose available slots to include in the draft
         available_slots: list[dict] | None = None
         approval_type = "email_reply"
@@ -138,7 +142,7 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
                     cal_error,
                 )
 
-        # Draft reply (pass full thread context + business_id for cost tracking)
+        # Draft reply (pass full thread context + retrieved context for provenance)
         draft_body = draft_reply(
             subject=msg["subject"],
             body=msg["snippet"],
@@ -148,9 +152,19 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
             thread_context=thread_content,
             business_id=business_id,
             available_slots=available_slots,
+            retrieved_context=retrieved_context,
         )
 
-        # Create approval
+        # Build execution plan
+        has_xero = bool(business_info.get("xero_access_token") and business_info.get("xero_tenant_id"))
+        execution_plan = build_execution_plan(
+            classification=classification,
+            retrieved_context=retrieved_context,
+            has_xero=has_xero,
+            is_known_client=(classification == "existing_client"),
+        )
+
+        # Create approval with plan + context provenance
         approval = create_approval(
             business_id=business_id,
             approval_type=approval_type,
@@ -159,6 +173,8 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
             why=f"Classified as {classification}",
             original_email_id=msg_id,
             draft_content=draft_body,
+            execution_plan=execution_plan,
+            retrieved_context=retrieved_context,
         )
 
         if approval:
@@ -176,7 +192,6 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
             # Send approval notification email to the owner
             approval_id_str = approval.get("id")
             owner_email = business_info.get("email") or ""
-            backend_origin = os.getenv("BACKEND_ORIGIN", "https://olivander-api.onrender.com")
             if approval_id_str and owner_email and WEBHOOK_SECRET:
                 send_approval_notification(
                     business_id=business_id,
@@ -185,7 +200,7 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
                     owner_email=owner_email,
                     access_token=access_token,
                     frontend_origin=FRONTEND_ORIGIN,
-                    backend_origin=backend_origin,
+                    backend_origin=BACKEND_ORIGIN,
                     webhook_secret=WEBHOOK_SECRET,
                 )
 
@@ -243,11 +258,15 @@ def _enqueue_new_lead_follow_ups(
 @router.post("/webhook/gmail")
 @limiter.limit("100/minute")
 async def gmail_push_webhook(request: Request) -> dict[str, Any]:
-    # Verify secret via Authorization header: Bearer <WEBHOOK_SECRET>
-    # Set this in your Pub/Sub push subscription as an Authorization header.
+    # Accept secret via Authorization: Bearer header OR ?token= query param.
+    # Pub/Sub push subscriptions can embed the secret in the endpoint URL as
+    # ?token=<WEBHOOK_SECRET> since they don't support custom static headers.
     expected = WEBHOOK_SECRET or ""
     auth_header = request.headers.get("Authorization", "")
-    token = auth_header.removeprefix("Bearer ").strip()
+    token = (
+        request.query_params.get("token")
+        or auth_header.removeprefix("Bearer ").strip()
+    )
 
     if not token or not expected or not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=403, detail="Forbidden")
