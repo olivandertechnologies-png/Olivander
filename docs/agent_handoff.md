@@ -43,15 +43,69 @@ If the work changes product scope, build state, blockers, migrations, deployment
 
 ## Current Snapshot
 
-- Build report exists at `docs/build_report.md`.
-- Build report update rules exist at `docs/build_report_agent_rules.md`.
-- Sent-mail voice calibration is now a tracked requirement, but not implemented.
-- Calendar Command Centre is now a tracked requirement, but not implemented.
-- Google OAuth is confirmed working as of 2026-05-01 — callback completed, business upserted, UI shows Connected.
-- Immediate build priority is now Gmail Pub/Sub watch verification, remaining DB migrations (003, 004, 006, 007, 008, 009, 010), and a real Gmail onboarding dry run.
-- The working tree contains many pre-existing uncommitted changes. Future agents should avoid reverting unrelated files.
+- **Git**: working tree clean. All changes committed and pushed to GitHub main as of 2026-05-01.
+- **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
+- **DB migrations**: all 10 confirmed applied to Supabase as of 2026-05-01.
+- **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role.
+- **Webhook**: accepts secret via `?token=` query param. Code committed.
+- **Single blocker**: `PUBSUB_TOPIC = projects/olivandertechnologies/topics/gmail-watch` not yet added to Render env vars. Once added and Google reconnected in app, first end-to-end email test can run.
+- **Security note**: `WEBHOOK_SECRET` was shared in session — rotate after end-to-end test passes and update Pub/Sub subscription endpoint URL.
+- Sent-mail voice calibration: specced in `docs/build_report.md`, not implemented.
+- Calendar Command Centre: specced in `docs/build_report.md`, not implemented.
 
 ## Rolling Handoff Log
+
+### 2026-05-01 - Claude - Full Pub/Sub Setup + Commit All Changes
+
+User request:
+
+- Set up Gmail Pub/Sub so inbound emails trigger the webhook.
+- Commit all Codex prior work to git.
+- Add hover Disconnect state to Connected buttons.
+- Record everything so Claude and Codex stay in sync.
+
+Work completed:
+
+- Created Pub/Sub topic `gmail-watch` in Google Cloud project `olivandertechnologies`.
+- Granted `gmail-api-push@system.gserviceaccount.com` the Pub/Sub Publisher role on the topic.
+- Created push subscription `gmail-watch-push` pointing to `https://olivander-api.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>`.
+- Modified `backend/gmail/webhook.py` to accept the webhook secret via `?token=` query param (Pub/Sub push subscriptions do not support custom static Authorization headers). Bearer header still works for other callers.
+- Added CSS hover state on `.connection-button.is-connected` — turns red and shows "Disconnect" on hover.
+- Committed all prior uncommitted Codex work (51 files, Phases 4–7: workspace, leads, quotes, clients, RAG, learning loop, calendar, onboarding, execution plans, providers layer, migration files 006–010, docs system).
+- Pushed all commits to GitHub. Render and Vercel auto-deploy from main.
+
+Files changed:
+
+- `backend/gmail/webhook.py` — query param token auth
+- `frontend/src/styles/dashboard.css` — hover disconnect state
+- All 51 Codex files committed (see git log 1509ef7)
+- `PLATFORM_STATUS.md` — updated throughout session
+- `docs/agent_handoff.md` — this file
+
+Verification:
+
+- Pub/Sub subscription shows state: active in Google Cloud Console.
+- Git push confirmed to GitHub.
+- Google OAuth confirmed working via Render logs (business ID c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6).
+- All 10 DB migrations confirmed applied to Supabase.
+
+Known blockers:
+
+- `PUBSUB_TOPIC` env var NOT YET set on Render. Until this is added and redeployed, `setup_gmail_watch()` will not run after OAuth and inbound emails will not trigger the webhook.
+- After `PUBSUB_TOPIC` is set on Render, owner must disconnect and reconnect Google in app Settings to trigger `setup_gmail_watch()`.
+- `WEBHOOK_SECRET` was shared in chat — owner should rotate it on Render after the end-to-end test is confirmed working. Update the Pub/Sub subscription endpoint URL with the new token value after rotation.
+- Xero redirect URI still needs registering in Xero developer portal.
+
+Next recommended action:
+
+1. Add `PUBSUB_TOPIC = projects/olivandertechnologies/topics/gmail-watch` to Render environment variables.
+2. Wait for Render to redeploy.
+3. In app Settings, disconnect Google then reconnect — this calls `setup_gmail_watch()`.
+4. Send a test email to `olivandertechnologies@gmail.com` from another account (e.g. a fake new lead enquiry).
+5. Watch Render logs for: webhook POST → classification → draft → approval created → notification email sent.
+6. Check `olivandertechnologies@gmail.com` inbox for the approval notification with approve/reject buttons.
+7. Tap Approve on phone and confirm reply is sent.
+8. After confirmed working, rotate `WEBHOOK_SECRET` on Render and update Pub/Sub subscription endpoint URL.
 
 ### 2026-05-01 - Claude - Google OAuth Confirmed Working
 

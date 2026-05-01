@@ -245,6 +245,21 @@ Once OAuth and dry run are working, implement sent-mail voice calibration before
 
 ## Running Change Log
 
+### 2026-05-01 (session 2)
+
+- Confirmed Google OAuth working end-to-end via Render logs. Business ID c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6 live in Supabase.
+- Confirmed DB migrations 001, 002, 005 applied (live query evidence). Applied migration 010 (workspace tables) via Supabase SQL editor.
+- Confirmed owner had applied migrations 003–009 previously. All 10 migrations now confirmed applied.
+- Created Pub/Sub topic `gmail-watch` in Google Cloud project `olivandertechnologies`.
+- Granted `gmail-api-push@system.gserviceaccount.com` Pub/Sub Publisher role on the topic.
+- Created push subscription `gmail-watch-push` → `https://olivander-api.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>`.
+- Modified `backend/gmail/webhook.py` to accept secret via `?token=` query param (Pub/Sub push does not support custom static headers).
+- Added CSS hover state to connected integration buttons: turns red, shows "Disconnect" text on hover.
+- Committed all prior Codex work (51 files, Phases 4–7) and pushed to GitHub.
+- **Blocker remaining**: `PUBSUB_TOPIC` env var not yet set on Render. Gmail watch will not activate until this is added and Google is reconnected in app Settings.
+- After `PUBSUB_TOPIC` is added and Google reconnected, first end-to-end email test can run.
+- `WEBHOOK_SECRET` should be rotated after end-to-end test is confirmed working.
+
 ### 2026-05-01
 
 - Created this build report.
