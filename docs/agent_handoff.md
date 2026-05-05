@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`; Priority 4 missed-response detection was committed/pushed as `5315afc`; Priority 5 ROI outcomes dashboard was pushed through `e3733ee`. Working tree now has local Priority 6 voice calibration changes pending commit.
+- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`; Priority 4 missed-response detection was committed/pushed as `5315afc`; Priority 5 ROI outcomes dashboard was pushed through `e3733ee`; Priority 6 voice calibration was committed locally as `93f4bb5` and is ready to push.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -137,8 +137,8 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
   3. Email → lead auto-link is code-complete; live Gmail E2E still unverified.
   4. Missed response detection is code-complete; live Gmail E2E still unverified.
   5. ROI outcomes dashboard is code-complete and pushed; live data E2E still unverified.
-  6. Voice calibration is code-complete locally; commit pending.
-  7. Calendar Command Centre UI is the next code build after Priority 6 is committed, then Workspace/Approvals integration → Trust tiers
+  6. Voice calibration is code-complete and committed locally; push pending.
+  7. Calendar Command Centre UI is the next code build after Priority 6 is pushed, then Workspace/Approvals integration → Trust tiers
 - **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
@@ -153,6 +153,7 @@ User request:
 Work completed:
 
 - Pushed Priority 5 ROI outcomes dashboard through `e3733ee`.
+- Committed Priority 6 sent-mail voice calibration locally as `93f4bb5` (`Add sent-mail voice calibration`).
 - Added `gmail.client.list_sent_messages()` for bounded sent-mail reads.
 - Added `agent/voice.py` to filter recent sent messages, extract a compact voice profile with Groq, return an example scenario/draft, and avoid storing raw sent emails.
 - Added `POST /api/onboarding/voice-calibration`; it stores `owner_voice_profile`, `owner_voice_calibrated_at`, and `owner_voice_source_count` in memory.
@@ -188,7 +189,7 @@ Known blockers or risks:
 
 Exact next recommended action:
 
-- Commit/push Priority 6. Next code build is Priority 7 Calendar Command Centre UI unless live Gmail/Xero/voice E2E testing takes priority.
+- Push Priority 6. Next code build is Priority 7 Calendar Command Centre UI unless live Gmail/Xero/voice E2E testing takes priority.
 
 ### 2026-05-05 - Codex - ROI Outcomes Dashboard
 
