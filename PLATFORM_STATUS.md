@@ -1,5 +1,5 @@
 # Olivander Platform Status
-*Last updated: 2026-05-05 — unpaid invoices panel built; Xero setup owner-confirmed; missed response detection and ROI dashboard added to build plan*
+*Last updated: 2026-05-05 — unpaid invoices panel and email-to-lead auto-link built; Xero setup owner-confirmed*
 
 ---
 
@@ -15,7 +15,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Quote follow-up | Directly linked to won/lost jobs | ✅ Built (Day-5 chaser + PDF) |
 | Email triage & draft reply | Core time sink; trust-building feature | ✅ Built |
 | Booking / scheduling automation | Frequent pain for trades, tourism, professional services | ✅ Backend built; UI partial |
-| Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ❌ Missing |
+| Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ✅ Built in code; live Gmail E2E unverified |
 | Missed response detection | Surfaces emails that arrived but were never replied to | ❌ Missing |
 | ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ❌ Missing |
 | Voice calibration | Draft quality must sound like the owner or trust collapses | ❌ Missing |
@@ -114,7 +114,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Stage progression (new_enquiry → won/lost) | ✅ Done | `api/leads.py` + `db/migrations/007_lead_pipeline.sql` |
 | Pipeline summary | ✅ Done | `api/leads.py:get_lead_pipeline_summary()` |
 | LeadPipelinePanel frontend | ✅ Done | `components/LeadPipelinePanel.jsx` |
-| Email → lead auto-mapping | ❌ Missing | No thread_id lookup to leads; manual entry only |
+| Email → lead auto-mapping | ✅ Done | `gmail/webhook.py` creates/links leads for `new_lead`; dedups by Gmail `thread_id` then sender email |
 
 ### Auth & Security
 
@@ -265,13 +265,13 @@ The automated Day-7/14/21 chasers work invisibly. The owner now has a dashboard 
    - *Files*: `api/invoices.py`, `api/actions.py`
 8. **Dedup guard ✅ DONE** — Blocks duplicate reminder if a pending invoice reminder approval exists or an automated chaser is scheduled within 48h.
 
-### Priority 3 — Email → Lead Auto-Link
+### Priority 3 — Email → Lead Auto-Link ✅ CODE COMPLETE
 
-9. **Auto-create leads from `new_lead` classified emails**
-   - In `gmail/webhook.py` after classification = `new_lead`, call `create_lead()` if no existing lead for that sender email
-   - Link lead `thread_id` to the Gmail thread_id for future dedup
-   - Show lead count badge on LeadPipelinePanel when new lead is auto-created
-   - *Files*: `gmail/webhook.py`, `db/supabase.py`, `api/leads.py`
+9. **Auto-create leads from `new_lead` classified emails ✅ DONE**
+   - `gmail/webhook.py` calls `create_or_link_lead_from_email()` after the approval is created.
+   - Dedup order: Gmail `thread_id`, then sender email. Existing leads are linked with missing `thread_id` / `approval_id` instead of duplicated.
+   - Dashboard lead count refreshes during inbox polling and the "New leads" metric now opens the Leads panel.
+   - *Files*: `gmail/webhook.py`, `db/supabase.py`, `DashboardApp.jsx`, `TodayPanel.jsx`
 
 ### Priority 4 — Missed Response Detection
 

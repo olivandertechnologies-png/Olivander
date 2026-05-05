@@ -296,9 +296,10 @@ export default function DashboardApp() {
       if (cancelled || syncing) return;
       syncing = true;
       try {
-        const [emailsResponse, approvalsResponse] = await Promise.all([
+        const [emailsResponse, approvalsResponse, leadSummaryResponse] = await Promise.all([
           fetchProtected('/api/emails'),
           fetchProtected('/api/approvals?status=pending'),
+          fetchProtected('/api/leads/summary'),
         ]);
         if (emailsResponse.status === 401) return;
         if (!emailsResponse.ok) throw new Error(`Failed with status ${emailsResponse.status}`);
@@ -314,6 +315,10 @@ export default function DashboardApp() {
               return [...newRows.map((row) => normaliseBackendApproval(row)), ...current];
             });
           }
+        }
+        if (leadSummaryResponse.ok) {
+          const leadSummary = await leadSummaryResponse.json();
+          if (!cancelled) setOpenLeadCount(leadSummary.total_active ?? 0);
         }
       } catch {
         if (!cancelled) setRecentEmailsError('Could not load — check connection');
@@ -1343,6 +1348,7 @@ export default function DashboardApp() {
     { id: 'inbox', label: 'Inbox', icon: <MailIcon />, badge: firstCustomerInbox.length || null },
     { id: 'jobs', label: 'Jobs', icon: <LeadPipelineIcon />, badge: firstCustomerJobsToday.length || null },
     { id: 'invoices', label: 'Invoices', icon: <InvoiceIcon /> },
+    { id: 'leads', label: 'Leads', icon: <FunnelIcon />, badge: openLeadCount || null },
     { id: 'tasks', label: 'Tasks', icon: <TaskListIcon />, badge: activeTaskCount || null },
     { id: 'activity', label: 'Activity', icon: <LinesIcon /> },
   ];

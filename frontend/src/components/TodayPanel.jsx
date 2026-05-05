@@ -167,7 +167,7 @@ export default function TodayPanel({
 
       <div className="today-metrics-grid">
         <MetricCard label="Needs approval" value={stats.awaitingApproval} detail="Ready to review" onClick={() => onNavigate('approvals')} />
-        <MetricCard label="New leads" value={stats.newLeads} detail="Inbox and manual" onClick={() => onNavigate('inbox')} />
+        <MetricCard label="New leads" value={stats.newLeads} detail="Inbox and pipeline" onClick={() => onNavigate('leads')} />
         <MetricCard label="Quote follow-ups" value={stats.quoteFollowUps} detail="Waiting too long" onClick={() => onNavigate('jobs')} />
         <MetricCard label="Jobs today" value={stats.jobsToday} detail="Scheduled or flagged" onClick={() => onNavigate('jobs')} />
         <MetricCard

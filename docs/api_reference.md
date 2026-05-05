@@ -179,6 +179,40 @@ Fetches the invoice from Xero live, drafts a payment reminder, and queues it as 
 
 ---
 
+## Leads
+
+### List Leads
+```
+GET /api/leads?stage=new_enquiry
+```
+
+`stage` is optional. Valid stages: `new_enquiry`, `contacted`, `quote_sent`, `quote_accepted`, `won`, `lost`.
+
+### Pipeline Summary
+```
+GET /api/leads/summary
+```
+
+Returns active lead counts for dashboard badges and summary panels.
+
+### Create Lead
+```
+POST /api/leads
+Content-Type: application/json
+
+{
+  "name": "Customer Ltd",
+  "email": "hello@example.co.nz",
+  "source": "manual",
+  "enquiry_type": "service_enquiry",
+  "thread_id": "gmail-thread-id"
+}
+```
+
+Gmail webhook processing also creates or links leads automatically when an inbound email is classified as `new_lead`. Dedup order is Gmail `thread_id`, then sender email.
+
+---
+
 ## Memory / Business Context
 
 ### Get Business Context

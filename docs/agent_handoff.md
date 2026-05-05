@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: working tree has local Priority 2 unpaid-invoices changes pending review/commit.
+- **Git**: Priority 2 unpaid-invoices work was committed and pushed as `b19b98e`. Working tree now has local Priority 3 email-to-lead auto-link changes pending commit.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -134,14 +134,57 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 - **Build priorities** (as of 2026-05-05 — see `PLATFORM_STATUS.md § Prioritised Next Steps` for full detail):
   1. MVP infra: Gmail Pub/Sub verification + live Gmail/Xero E2E tests. Xero setup is owner-confirmed.
   2. Unpaid invoices panel + manual reminder is code-complete; live Xero E2E still unverified.
-  3. Email → lead auto-link is the next code build.
-  4. Missed response detection (new feature — not yet built)
+  3. Email → lead auto-link is code-complete; live Gmail E2E still unverified.
+  4. Missed response detection is the next code build.
   5. ROI outcomes dashboard (new feature — not yet built)
   6. Voice calibration → Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
 - **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
 ## Rolling Handoff Log
+
+### 2026-05-05 - Codex - Email To Lead Auto-Link
+
+User request:
+
+- Keep going until the overall build is closer to done.
+
+Work completed:
+
+- Committed and pushed Priority 2 unpaid-invoices work as `b19b98e` (`Add unpaid invoice reminders panel`).
+- Added `db.supabase.create_or_link_lead_from_email()` plus lookup helpers for lead dedup by Gmail `thread_id`, then sender email.
+- Updated Gmail webhook `new_lead` processing to create or link a `lead_pipeline` row after the approval is queued, storing `thread_id` and `approval_id` where available.
+- Kept new-lead follow-up sequence intact; lead creation failure logs a warning and does not block approval creation.
+- Added dashboard Leads nav badge and refreshed `/api/leads/summary` during inbox polling so auto-created leads surface without reload.
+- Changed the Today "New leads" metric to open the Leads panel.
+- Updated `PLATFORM_STATUS.md`, `docs/build_report.md`, and `docs/api_reference.md`.
+
+Files changed:
+
+- `backend/db/supabase.py`
+- `backend/gmail/webhook.py`
+- `backend/tests/test_lead_auto_link.py`
+- `frontend/src/components/DashboardApp.jsx`
+- `frontend/src/components/TodayPanel.jsx`
+- `PLATFORM_STATUS.md`
+- `docs/api_reference.md`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py tests/test_invoices.py tests/test_lead_auto_link.py -q` from `backend/` (13 tests).
+- Passed: `npm run build` from `frontend/`.
+
+Known blockers or risks:
+
+- Live Gmail webhook E2E is still unverified until Pub/Sub watch activation is confirmed and Google is reconnected.
+- Live lead auto-creation from a real inbound Gmail message still needs verification after deployment.
+- Live Xero invoice reminder E2E remains unverified.
+
+Exact next recommended action:
+
+- Commit and push Priority 3, then run live Gmail E2E. Next code build is Priority 4 Missed Response Detection.
 
 ### 2026-05-05 - Codex - Unpaid Invoices Panel + Manual Reminder
 

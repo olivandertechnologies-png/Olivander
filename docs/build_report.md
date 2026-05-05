@@ -234,12 +234,17 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Manual reminder creates an approval action; owner reviews/edits the draft before anything sends.
 - Remaining verification: live Xero account E2E against the connected customer account.
 
-**Next code build: Priority 3 — Email → Lead Auto-Link**
-- Auto-create leads from `new_lead` classified emails.
-- Link lead `thread_id` to Gmail thread IDs for deduplication.
-- Show a lead-count badge when inbound email creates a new lead.
+**Priority 3 — Email → Lead Auto-Link ✅ code complete**
+- `gmail/webhook.py` creates or links a pipeline lead when classification is `new_lead`.
+- Dedup order is Gmail `thread_id`, then sender email; existing leads are linked rather than duplicated.
+- Dashboard lead count refreshes during inbox polling and the "New leads" metric opens the Leads panel.
 
-**Priority 4 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for missed response detection, ROI outcomes dashboard, voice calibration, and calendar UI.
+**Next code build: Priority 4 — Missed Response Detection**
+- Track thread response state for inbound messages.
+- Surface unanswered enquiries as approval/action cards.
+- Add dismiss/snooze handling so owners can clear emails handled outside Olivander.
+
+**Priority 5 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for ROI outcomes dashboard, voice calibration, and calendar UI.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -349,6 +354,7 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Updated CLAUDE.md and AGENTS.md: removed stale "Pending DB Migrations" section (all 001–010 confirmed applied 2026-05-01); added sync warning between the two files.
 - Owner confirmed Xero setup is complete on 2026-05-05. Docs now treat the Xero redirect/setup item as owner-confirmed, while the live invoice creation → approval → send E2E remains unverified.
 - Built **Priority 2 — Unpaid Invoices Panel + Manual Reminder** in code: live Xero unpaid invoice endpoint, dashboard panel, manual reminder approval queue, duplicate guard against pending reminder approvals and scheduled chasers within 48h. Verification: backend invoice/security tests passed; frontend production build passed; Playwright smoke checked desktop/mobile empty state.
+- Built **Priority 3 — Email → Lead Auto-Link** in code: new-lead Gmail webhook processing now creates or links `lead_pipeline` rows, dedups by thread/email, links approval IDs, refreshes dashboard lead count during inbox polling, and routes the "New leads" metric to the Leads panel. Verification: backend lead/security/invoice tests passed; frontend production build passed.
 
 ### 2026-05-03
 

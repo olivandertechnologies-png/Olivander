@@ -545,6 +545,36 @@ def get_lead(business_id: str, lead_id: str) -> dict[str, Any] | None:
     return _normalise_row(response.data)
 
 
+def get_lead_by_thread_id(business_id: str, thread_id: str) -> dict[str, Any] | None:
+    """Return a lead linked to a Gmail thread ID."""
+    response = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("thread_id", thread_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def get_lead_by_email(business_id: str, email: str) -> dict[str, Any] | None:
+    """Return the latest lead for an email address, case-insensitively."""
+    response = (
+        get_supabase_client()
+        .table("lead_pipeline")
+        .select("*")
+        .eq("business_id", business_id)
+        .ilike("email", email)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
 def update_lead(
     business_id: str,
     lead_id: str,
@@ -559,6 +589,60 @@ def update_lead(
         .execute()
     )
     return _normalise_row(response.data)
+
+
+def create_or_link_lead_from_email(
+    business_id: str,
+    *,
+    name: str,
+    email: str | None,
+    thread_id: str | None,
+    approval_id: str | None,
+    subject: str,
+    snippet: str,
+) -> tuple[dict[str, Any] | None, bool]:
+    """Create a lead for a new-lead email, or link the email to an existing lead.
+
+    Returns (lead, created). Existing leads are matched by Gmail thread first,
+    then sender email. This keeps repeated webhook deliveries and follow-up
+    replies from creating duplicate pipeline cards.
+    """
+    clean_email = (email or "").strip()
+    clean_thread_id = (thread_id or "").strip()
+
+    existing = None
+    if clean_thread_id:
+        existing = get_lead_by_thread_id(business_id, clean_thread_id)
+    if not existing and clean_email:
+        existing = get_lead_by_email(business_id, clean_email)
+
+    if existing:
+        updates: dict[str, Any] = {}
+        if clean_thread_id and not existing.get("thread_id"):
+            updates["thread_id"] = clean_thread_id
+        if approval_id and not existing.get("approval_id"):
+            updates["approval_id"] = approval_id
+        if clean_email and not existing.get("email"):
+            updates["email"] = clean_email
+        if updates:
+            return update_lead(business_id, str(existing["id"]), updates), False
+        return existing, False
+
+    notes = f"Auto-created from Gmail new lead: {subject}"
+    if snippet:
+        notes = f"{notes}\n\n{snippet[:500]}"
+
+    lead = create_lead(
+        business_id,
+        name=name or clean_email or "New lead",
+        email=clean_email or None,
+        source="email",
+        enquiry_type="new_lead",
+        notes=notes,
+        thread_id=clean_thread_id or None,
+        approval_id=approval_id,
+    )
+    return lead, True
 
 
 def get_lead_pipeline_summary(business_id: str) -> dict[str, Any]:

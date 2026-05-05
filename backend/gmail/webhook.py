@@ -2,6 +2,7 @@ import base64
 import hmac
 import json
 import logging
+from email.utils import parseaddr
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -13,6 +14,7 @@ from agent.rag import retrieve_context_chunks
 from config import BACKEND_ORIGIN, FRONTEND_ORIGIN, WEBHOOK_SECRET
 from db.supabase import (
     approval_exists_for_message,
+    create_or_link_lead_from_email,
     create_approval,
     get_business_by_email,
     get_business_by_id,
@@ -206,10 +208,45 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
 
         # Enqueue follow-up sequence for new leads
         if classification == "new_lead":
+            approval_id = str(approval.get("id")) if approval else None
+            sender_name, sender_email = parseaddr(msg.get("from") or "")
+            sender_name = sender_name or msg.get("from_name") or sender_email or "New lead"
+            try:
+                lead, created = create_or_link_lead_from_email(
+                    business_id,
+                    name=sender_name,
+                    email=sender_email or msg.get("from") or "",
+                    thread_id=thread_id,
+                    approval_id=approval_id,
+                    subject=msg.get("subject") or "",
+                    snippet=msg.get("snippet") or "",
+                )
+                if lead:
+                    log_activity(
+                        business_id,
+                        f"{'Lead auto-created' if created else 'Lead linked'}: {lead.get('name')}",
+                        activity_type="lead_created" if created else "lead_linked",
+                        metadata={
+                            "lead_id": lead.get("id"),
+                            "gmail_message_id": msg_id,
+                            "thread_id": thread_id,
+                            "approval_id": approval_id,
+                            "created": created,
+                        },
+                    )
+            except Exception as lead_error:
+                logger.warning(
+                    "Could not auto-create lead for %s from message %s: %s",
+                    business_id,
+                    msg_id,
+                    lead_error,
+                    exc_info=True,
+                )
+
             _enqueue_new_lead_follow_ups(
                 business_id=business_id,
-                sender_name=msg.get("from_name") or msg.get("from") or "",
-                sender_email=msg.get("from") or "",
+                sender_name=sender_name,
+                sender_email=sender_email or msg.get("from") or "",
                 subject=msg.get("subject") or "",
                 original_body=msg.get("snippet") or "",
                 original_email_id=msg_id,
