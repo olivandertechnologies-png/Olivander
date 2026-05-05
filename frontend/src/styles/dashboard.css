@@ -3138,6 +3138,69 @@ textarea::placeholder {
   flex-wrap: wrap;
 }
 
+.outcomes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.outcomes-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.outcomes-panel__header span,
+.outcomes-stat span {
+  display: block;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.outcomes-panel__header h3 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.outcomes-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.outcomes-stat {
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.outcomes-stat strong {
+  display: block;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.outcomes-stat span {
+  margin-top: 8px;
+}
+
 .today-metrics-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -3860,7 +3923,8 @@ textarea::placeholder {
 }
 
 @media (max-width: 1120px) {
-  .today-metrics-grid {
+  .today-metrics-grid,
+  .outcomes-panel__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -3942,7 +4006,8 @@ textarea::placeholder {
 
   .today-hero,
   .panel-title-row,
-  .section-heading-row {
+  .section-heading-row,
+  .outcomes-panel__header {
     flex-direction: column;
     align-items: stretch;
   }
@@ -3956,6 +4021,10 @@ textarea::placeholder {
   }
 
   .today-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .outcomes-panel__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -3978,7 +4047,8 @@ textarea::placeholder {
 }
 
 @media (max-width: 360px) {
-  .today-metrics-grid {
+  .today-metrics-grid,
+  .outcomes-panel__grid {
     grid-template-columns: 1fr;
   }
 }

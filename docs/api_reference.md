@@ -129,6 +129,35 @@ Approving a `missed_response` approval marks it handled and sends no email. Reje
 
 ---
 
+## Outcomes
+
+### Summary
+```
+GET /api/outcomes/summary
+```
+
+Returns rolling 30-day proof-of-value metrics for the authenticated business.
+
+**Response:**
+```json
+{
+  "window_days": 30,
+  "since": "2026-04-05T10:00:00+00:00",
+  "until": "2026-05-05T10:00:00+00:00",
+  "total_admin_tasks": 12,
+  "emails_triaged": 4,
+  "follow_ups_sent": 2,
+  "invoices_chased": 2,
+  "quotes_sent": 1,
+  "avg_response_time_hours": 1.8,
+  "leads_created": 3
+}
+```
+
+Counts are derived from existing approvals, completed job queue records, and auto-created email leads. No new tracking table is required.
+
+---
+
 ## Invoices
 
 ### List Unpaid Xero Invoices

@@ -244,10 +244,15 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Job handler skips handled approvals and creates a non-sending `missed_response` approval card when no approved/rejected response exists.
 - Dashboard/email-tap approval paths mark missed-response cards handled without sending.
 
-**Next code build: Priority 5 — ROI Outcomes Dashboard**
-- `GET /api/outcomes/summary` for rolling 30-day proof-of-value metrics.
-- Dashboard `OutcomesPanel` with plain number metrics only.
-- Derive counts from existing activity/jobs/approvals before adding new tracking columns.
+**Priority 5 — ROI Outcomes Dashboard ✅ code complete**
+- `GET /api/outcomes/summary` returns rolling 30-day proof-of-value metrics.
+- Today dashboard now includes `OutcomesPanel` with the six plain-number metrics and the required 30-day headline.
+- Counts are derived from existing approvals/jobs/leads; no migration or new tracking columns required.
+
+**Next code build: Priority 6 — Sent-Mail Voice Calibration**
+- Add owner sent-mail style analysis and persist the voice profile in memory.
+- Feed the owner voice profile into draft generation.
+- Live Gmail/Xero E2E checks remain the operational priority before first customer use.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -359,6 +364,7 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Built **Priority 2 — Unpaid Invoices Panel + Manual Reminder** in code: live Xero unpaid invoice endpoint, dashboard panel, manual reminder approval queue, duplicate guard against pending reminder approvals and scheduled chasers within 48h. Verification: backend invoice/security tests passed; frontend production build passed; Playwright smoke checked desktop/mobile empty state.
 - Built **Priority 3 — Email → Lead Auto-Link** in code: new-lead Gmail webhook processing now creates or links `lead_pipeline` rows, dedups by thread/email, links approval IDs, refreshes dashboard lead count during inbox polling, and routes the "New leads" metric to the Leads panel. Verification: backend lead/security/invoice tests passed; frontend production build passed.
 - Built **Priority 4 — Missed Response Detection** in code: actionable inbound Gmail processing queues delayed missed-response checks, job handler creates non-sending `missed_response` approval cards when the original approval remains unhandled, and dashboard/email-tap approvals can mark those cards handled without sending. Verification: backend missed-response/lead/invoice/security tests passed; frontend production build passed.
+- Built **Priority 5 — ROI Outcomes Dashboard** in code: added `GET /api/outcomes/summary`, pure 30-day outcome counting from approvals/jobs/leads, and a compact Today-panel `OutcomesPanel` with the six required metrics. Verification: backend outcomes/missed-response/lead/invoice/security tests passed; frontend production build passed.
 
 ### 2026-05-03
 

@@ -737,6 +737,149 @@ def get_lead_pipeline_summary(business_id: str) -> dict[str, Any]:
     }
 
 
+# ── Outcomes Summary ─────────────────────────────────────────────────────────
+
+def _parse_utc_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _is_customer_email_approval(row: dict[str, Any]) -> bool:
+    approval_type = str(row.get("type") or "")
+    original_email_id = str(row.get("original_email_id") or "")
+    if approval_type not in {"email_reply", "booking_reply"}:
+        return False
+    return not original_email_id.startswith(("xero_invoice:", "missed_response:"))
+
+
+def build_outcomes_summary(
+    *,
+    approvals: list[dict[str, Any]],
+    jobs: list[dict[str, Any]],
+    leads: list[dict[str, Any]],
+    since: datetime,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Build rolling proof-of-value metrics from existing persisted records."""
+    until = now or datetime.now(timezone.utc)
+    since_utc = since.astimezone(timezone.utc) if since.tzinfo else since.replace(tzinfo=timezone.utc)
+    until_utc = until.astimezone(timezone.utc) if until.tzinfo else until.replace(tzinfo=timezone.utc)
+
+    approved_email_actions = 0
+    quotes_sent = 0
+    response_hours: list[float] = []
+
+    for approval in approvals:
+        if str(approval.get("status") or "") != "approved":
+            continue
+        approved_at = _parse_utc_datetime(approval.get("when_ts"))
+        if not approved_at or approved_at < since_utc:
+            continue
+
+        approval_type = str(approval.get("type") or "")
+        if _is_customer_email_approval(approval):
+            approved_email_actions += 1
+            created_at = _parse_utc_datetime(approval.get("created_at"))
+            if created_at and approved_at >= created_at:
+                response_hours.append((approved_at - created_at).total_seconds() / 3600)
+
+        if approval_type == "send_quote":
+            quotes_sent += 1
+
+    completed_jobs = []
+    for job in jobs:
+        completed_at = _parse_utc_datetime(job.get("updated_at")) or _parse_utc_datetime(job.get("created_at"))
+        if str(job.get("status") or "") == "completed" and completed_at and completed_at >= since_utc:
+            completed_jobs.append(job)
+    follow_ups_sent = sum(1 for job in completed_jobs if job.get("job_type") == "follow_up_email")
+    invoices_chased = sum(1 for job in completed_jobs if job.get("job_type") == "chase_invoice")
+
+    leads_created = 0
+    for lead in leads:
+        created_at = _parse_utc_datetime(lead.get("created_at"))
+        if str(lead.get("source") or "") == "email" and created_at and created_at >= since_utc:
+            leads_created += 1
+
+    avg_response_time_hours = round(sum(response_hours) / len(response_hours), 1) if response_hours else 0.0
+    total_admin_tasks = (
+        approved_email_actions
+        + follow_ups_sent
+        + invoices_chased
+        + quotes_sent
+        + leads_created
+    )
+
+    return {
+        "window_days": max(1, (until_utc.date() - since_utc.date()).days),
+        "since": since_utc.isoformat(),
+        "until": until_utc.isoformat(),
+        "total_admin_tasks": total_admin_tasks,
+        "emails_triaged": approved_email_actions,
+        "follow_ups_sent": follow_ups_sent,
+        "invoices_chased": invoices_chased,
+        "quotes_sent": quotes_sent,
+        "avg_response_time_hours": avg_response_time_hours,
+        "leads_created": leads_created,
+    }
+
+
+def get_outcomes_summary(business_id: str, *, window_days: int = 30) -> dict[str, Any]:
+    """Return rolling outcome metrics for the authenticated business."""
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=window_days)
+    since_iso = since.isoformat()
+    supabase = get_supabase_client()
+
+    approvals = (
+        supabase
+        .table("approvals")
+        .select("id,type,status,original_email_id,created_at,when_ts")
+        .eq("business_id", business_id)
+        .eq("status", "approved")
+        .gte("when_ts", since_iso)
+        .execute()
+        .data
+        or []
+    )
+    jobs = (
+        supabase
+        .table("job_queue")
+        .select("id,job_type,status,created_at,updated_at")
+        .eq("business_id", business_id)
+        .eq("status", "completed")
+        .gte("updated_at", since_iso)
+        .execute()
+        .data
+        or []
+    )
+    leads = (
+        supabase
+        .table("lead_pipeline")
+        .select("id,source,created_at")
+        .eq("business_id", business_id)
+        .eq("source", "email")
+        .gte("created_at", since_iso)
+        .execute()
+        .data
+        or []
+    )
+
+    return build_outcomes_summary(
+        approvals=approvals,
+        jobs=jobs,
+        leads=leads,
+        since=since,
+        now=now,
+    )
+
+
 # ── First-customer workspace records ─────────────────────────────────────────
 
 def get_workspace_jobs(business_id: str) -> list[dict[str, Any]]:

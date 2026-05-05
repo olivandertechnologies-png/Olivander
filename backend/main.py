@@ -25,6 +25,7 @@ from api.clients import router as clients_router
 from api.email_actions import router as email_actions_router
 from api.invoices import router as invoices_router
 from api.leads import router as leads_router
+from api.outcomes import router as outcomes_router
 from api.quotes import router as quotes_router
 from api.workspace import router as workspace_router
 from auth.deps import get_current_business
@@ -114,6 +115,7 @@ app.include_router(calendar_router)
 app.include_router(clients_router)
 app.include_router(invoices_router)
 app.include_router(leads_router)
+app.include_router(outcomes_router)
 app.include_router(quotes_router)
 app.include_router(workspace_router)
 app.include_router(email_actions_router)

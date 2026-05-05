@@ -1,5 +1,5 @@
 # Olivander Platform Status
-*Last updated: 2026-05-05 — unpaid invoices, email-to-lead, and missed-response detection built in code*
+*Last updated: 2026-05-05 — unpaid invoices, email-to-lead, missed-response detection, and ROI outcomes dashboard built in code*
 
 ---
 
@@ -17,7 +17,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Booking / scheduling automation | Frequent pain for trades, tourism, professional services | ✅ Backend built; UI partial |
 | Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ✅ Built in code; live Gmail E2E unverified |
 | Missed response detection | Surfaces emails that arrived but were never replied to | ✅ Built in code; live Gmail E2E unverified |
-| ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ❌ Missing |
+| ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ✅ Built in code; live data E2E unverified |
 | Voice calibration | Draft quality must sound like the owner or trust collapses | ❌ Missing |
 
 **Explicitly out of scope for Phase 1:** social media automation, Shopify integration, Microsoft Outlook/365, staff rostering, supplier coordination, SMS channel. Focus only on the workflows above.
@@ -203,7 +203,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 2. **DB migrations unconfirmed** — ✅ RESOLVED 2026-05-01. All 001–010 confirmed applied.
 3. **Xero setup** — ✅ Owner-confirmed 2026-05-05. Live invoice approval/send test still required.
 4. **Missed response detection** — ✅ Built in code using delayed job checks against approval state. Live Gmail E2E still required.
-5. **No ROI outcomes panel** — There is no way for the owner to see what Olivander has done for them. Without this, there is no proof of value, no referral story, and no retention anchor.
+5. **ROI outcomes panel** — ✅ Built in code from existing approvals/jobs/leads. Live production data E2E still required.
 6. **pgvector not wired** — `agent/rag.py` uses keyword priority only; semantic retrieval requires an embedding model (not Groq — needs OpenAI or sentence-transformers) and `embedding vector(768)` column on memory.
 7. **Workspace ↔ approvals gap** — `workspace_jobs/messages/actions` are isolated tables; no FK links to approvals. Actions created by the approval flow don't appear in the workspace.
 8. **Email → lead auto-link** — ✅ Built in code. Live Gmail E2E still required.
@@ -219,14 +219,14 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Gap | PRD requirement | Current state |
 |-----|-----------------|---------------|
 | Missed response detection | Market research: "missed follow-ups reduced" is core ROI metric | Built using delayed approval/job state checks; live Gmail E2E unverified |
-| ROI outcomes dashboard | Market research: primary sales and retention proof point | No outcomes panel; owner cannot see what Olivander has done |
+| ROI outcomes dashboard | Market research: primary sales and retention proof point | Built from existing approval/job/lead records; live data E2E unverified |
 | pgvector semantic retrieval | §7.1 "pgvector query: top-3 chunks per query" | Keyword priority fallback only |
 | Embedding model | §3.3 "RAG retrieval: pgvector 768-dim + Groq" | No embedding API; no vector column on memory |
 | Tier 2 auto-send countdown | §5.1 "2-hour window, sends if not rejected" | Not implemented |
 | Trust progression prompts | §5.3 "suggest tier promotion after 10 consec." | Not implemented |
 | Sent-mail voice calibration | PRD / build_report §3 | Spec only — no code |
 | Calendar Command Centre | build_report §4 | Backend client exists; no dedicated UI |
-| Email → lead auto-link | §7.3 | No automatic lead creation from inbound emails |
+| Email → lead auto-link | §7.3 | Built in code; live Gmail E2E unverified |
 | Workspace ↔ approvals integration | Implied by first-customer spec | Tables are isolated |
 
 ---
@@ -283,22 +283,22 @@ Market research: "missed follow-ups reduced" is a top-5 ROI metric SMEs care abo
 11. **Missed response job ✅ DONE** — `jobs/handlers.py:handle_missed_response_check` checks pending response state and dedups pending missed-response cards.
 12. **Dismiss / mark handled ✅ DONE** — Approval card says "Mark handled" / "Dismiss" for missed-response actions. Dashboard and email-tap approval paths mark handled without sending an email.
 
-### Priority 5 — ROI Outcomes Dashboard
+### Priority 5 — ROI Outcomes Dashboard ✅ CODE COMPLETE
 
 Market research: the product sells on "admin hours saved, emails followed up, invoices chased, response times improved." Without visible proof of value, customers don't renew and don't refer. This is the single most important retention and referral driver.
 
-13. **`GET /api/outcomes/summary`** — Returns for the authenticated business, rolling 30-day:
+13. **`GET /api/outcomes/summary` ✅ DONE** — Returns for the authenticated business, rolling 30-day:
     - `emails_triaged` — count of approved email actions
     - `follow_ups_sent` — count of follow_up_email jobs completed
     - `invoices_chased` — count of chase_invoice jobs completed
     - `quotes_sent` — count of quote actions approved
     - `avg_response_time_hours` — mean gap between inbound email and approved reply
     - `leads_created` — count of auto-created leads
-    - *Files*: new `api/outcomes.py`, `db/supabase.py`
-14. **OutcomesPanel in dashboard** — A compact panel (not a separate page) showing the six metrics as plain numbers with labels. Style: DM Sans 600 stat number (28px), DM Sans 400 label (12px, Slate Muted). No charts in Phase 1 — numbers only.
+    - *Files*: `api/outcomes.py`, `db/supabase.py`
+14. **OutcomesPanel in dashboard ✅ DONE** — A compact panel on Today showing the six metrics as plain numbers with labels. Style: DM Sans 600 stat number (28px), DM Sans 400 label (12px, Slate Muted). No charts in Phase 1 — numbers only.
     - Headline copy: "In the last 30 days, Olivander handled X admin tasks for you."
-    - *Files*: new `components/OutcomesPanel.jsx`, wired into `DashboardApp.jsx`
-15. **Activity log counts** — Derive counts from existing `activity` table where possible before adding new tracking columns; add columns only where activity log is insufficient
+    - *Files*: `components/OutcomesPanel.jsx`, `DashboardApp.jsx`, `TodayPanel.jsx`, `dashboard.css`
+15. **Activity / state counts ✅ DONE** — Counts are derived from existing `approvals`, `job_queue`, and `lead_pipeline` records. No migration or new tracking columns required.
 
 ### Priority 6 — Sent-Mail Voice Calibration
 

@@ -43,6 +43,16 @@ const SETTINGS_SECTIONS = SETTINGS_SECTIONS_CONFIG.map((item, i) => {
 });
 
 const INITIAL_SAMPLE_WORKSPACE = createFirstCustomerSampleWorkspace();
+const DEMO_OUTCOMES_SUMMARY = {
+  window_days: 30,
+  total_admin_tasks: 18,
+  emails_triaged: 6,
+  follow_ups_sent: 4,
+  invoices_chased: 3,
+  quotes_sent: 2,
+  avg_response_time_hours: 1.8,
+  leads_created: 3,
+};
 
 export default function DashboardApp() {
   const processedEmailIdsRef = useRef(getStoredProcessedEmailIds());
@@ -87,6 +97,9 @@ export default function DashboardApp() {
   const [activityFilter, setActivityFilter] = useState('all');
   const [recentEmails, setRecentEmails] = useState([]);
   const [recentEmailsError, setRecentEmailsError] = useState('');
+  const [outcomesSummary, setOutcomesSummary] = useState(null);
+  const [outcomesLoading, setOutcomesLoading] = useState(false);
+  const [outcomesError, setOutcomesError] = useState('');
   const [workspaceImportState, setWorkspaceImportState] = useState({ busy: false, message: '' });
   const [memoryProfile, setMemoryProfile] = useState(createEmptyMemoryProfile);
   const [isMemoryLoading, setIsMemoryLoading] = useState(true);
@@ -143,6 +156,7 @@ export default function DashboardApp() {
     moneyAtRisk: firstCustomerMoneyAtRisk,
     calendarGaps: visibleFirstCustomerActions.filter((action) => action.type === 'calendar_gap').length,
   };
+  const visibleOutcomesSummary = demoMode ? DEMO_OUTCOMES_SUMMARY : outcomesSummary;
 
   const sessionPayload = decodeSessionPayload(sessionToken);
   const tokenContactName = trimToNull(String(sessionPayload?.contact_name ?? '')) ?? '';
@@ -226,6 +240,36 @@ export default function DashboardApp() {
     void loadLeadSummary();
     return () => { cancelled = true; };
   }, [sessionToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOutcomes() {
+      if (!sessionToken || demoMode) {
+        setOutcomesSummary(null);
+        setOutcomesError('');
+        setOutcomesLoading(false);
+        return;
+      }
+      setOutcomesLoading(true);
+      setOutcomesError('');
+      try {
+        const response = await fetchProtected('/api/outcomes/summary');
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+        const payload = await response.json();
+        if (!cancelled) setOutcomesSummary(payload);
+      } catch {
+        if (!cancelled) {
+          setOutcomesSummary(null);
+          setOutcomesError('Could not load outcomes.');
+        }
+      } finally {
+        if (!cancelled) setOutcomesLoading(false);
+      }
+    }
+    void loadOutcomes();
+    return () => { cancelled = true; };
+  }, [sessionToken, demoMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -658,6 +702,22 @@ export default function DashboardApp() {
       return additions.length ? [...additions, ...current] : current;
     });
     return normalised;
+  }
+
+  async function refreshOutcomesSummary({ silent = false } = {}) {
+    if (!sessionToken || demoMode) return;
+    if (!silent) setOutcomesLoading(true);
+    setOutcomesError('');
+    try {
+      const response = await fetchProtected('/api/outcomes/summary');
+      if (response.status === 401) return;
+      if (!response.ok) throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+      setOutcomesSummary(await response.json());
+    } catch {
+      setOutcomesError('Could not load outcomes.');
+    } finally {
+      if (!silent) setOutcomesLoading(false);
+    }
   }
 
   async function syncGoogleConnectionStatus({ silent = false } = {}) {
@@ -1189,6 +1249,7 @@ export default function DashboardApp() {
         void persistWorkspacePatch('actions', approval.workspaceActionId, { status: 'approved' });
       }
       addActivityItem('approved', 'Approved', approval.subject);
+      void refreshOutcomesSummary({ silent: true });
     } catch {
       setRemovingApprovals((current) => { const next = { ...current }; delete next[approval.id]; return next; });
     }
@@ -1441,6 +1502,9 @@ export default function DashboardApp() {
                 jobsToday={firstCustomerJobsToday}
                 recentActivity={combinedActivity}
                 stats={todayStats}
+                outcomesSummary={visibleOutcomesSummary}
+                outcomesLoading={!demoMode && outcomesLoading}
+                outcomesError={!demoMode ? outcomesError : ''}
                 onActionApprove={handleFirstCustomerActionApprove}
                 onActionDelay={handleFirstCustomerActionDelay}
                 onActionDismiss={handleFirstCustomerActionDismiss}
@@ -1450,6 +1514,7 @@ export default function DashboardApp() {
                 onUpgrade={() => openSettings('plan')}
                 onResetDemo={handleResetDemoWorkspace}
                 onDemoModeChange={handleDemoModeChange}
+                onRefreshOutcomes={!demoMode ? () => void refreshOutcomesSummary() : null}
               />
             ) : null}
 

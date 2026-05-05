@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PLAN_CONFIG, PLAN_KEYS, isPlusPlan } from '../utils/firstCustomer.js';
+import OutcomesPanel from './OutcomesPanel.jsx';
 
 const DELAY_OPTIONS = [
   { key: 'tomorrow', label: 'Tomorrow' },
@@ -133,6 +134,9 @@ export default function TodayPanel({
   jobsToday,
   recentActivity,
   stats,
+  outcomesSummary,
+  outcomesLoading,
+  outcomesError,
   onActionApprove,
   onActionDelay,
   onActionDismiss,
@@ -142,6 +146,7 @@ export default function TodayPanel({
   onUpgrade,
   onResetDemo,
   onDemoModeChange,
+  onRefreshOutcomes,
 }) {
   const plus = isPlusPlan(plan);
   const planConfig = PLAN_CONFIG[plus ? PLAN_KEYS.plus : PLAN_KEYS.starter];
@@ -163,6 +168,13 @@ export default function TodayPanel({
         canUseRealWorkspace={canUseRealWorkspace}
         onResetDemo={onResetDemo}
         onDemoModeChange={onDemoModeChange}
+      />
+
+      <OutcomesPanel
+        summary={outcomesSummary}
+        loading={outcomesLoading}
+        error={outcomesError}
+        onRefresh={onRefreshOutcomes}
       />
 
       <div className="today-metrics-grid">

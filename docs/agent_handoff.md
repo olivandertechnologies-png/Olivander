@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`. Working tree now has local Priority 4 missed-response detection changes pending commit.
+- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`; Priority 4 missed-response detection was committed/pushed as `5315afc`. Working tree now has local Priority 5 ROI outcomes dashboard changes pending commit.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -136,12 +136,56 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
   2. Unpaid invoices panel + manual reminder is code-complete; live Xero E2E still unverified.
   3. Email → lead auto-link is code-complete; live Gmail E2E still unverified.
   4. Missed response detection is code-complete; live Gmail E2E still unverified.
-  5. ROI outcomes dashboard is the next code build.
-  6. Voice calibration → Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
+  5. ROI outcomes dashboard is code-complete locally; commit pending.
+  6. Voice calibration is the next code build after Priority 5 is committed, then Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
 - **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
 ## Rolling Handoff Log
+
+### 2026-05-05 - Codex - ROI Outcomes Dashboard
+
+User request:
+
+- Keep going until the overall build is closer to done.
+
+Work completed:
+
+- Committed and pushed Priority 4 missed-response detection as `5315afc` (`Add missed response detection`).
+- Added `GET /api/outcomes/summary` for rolling 30-day proof-of-value metrics.
+- Added pure outcome counting in `db.supabase.build_outcomes_summary()` from existing approvals, completed jobs, and email-created leads. No migration or new tracking columns required.
+- Added `OutcomesPanel` to the Today dashboard with the required headline and six plain-number metrics.
+- Added demo-mode outcome values so the first screen still tells the product story without live data.
+- Updated `PLATFORM_STATUS.md`, `docs/build_report.md`, `docs/api_reference.md`, and this handoff.
+
+Files changed:
+
+- `backend/api/outcomes.py`
+- `backend/db/supabase.py`
+- `backend/main.py`
+- `backend/tests/test_outcomes.py`
+- `frontend/src/components/OutcomesPanel.jsx`
+- `frontend/src/components/DashboardApp.jsx`
+- `frontend/src/components/TodayPanel.jsx`
+- `frontend/src/styles/dashboard.css`
+- `PLATFORM_STATUS.md`
+- `docs/api_reference.md`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py tests/test_invoices.py tests/test_lead_auto_link.py tests/test_missed_response.py tests/test_outcomes.py -q` from `backend/` (17 tests).
+- Passed: `npm run build` from `frontend/`.
+
+Known blockers or risks:
+
+- Live outcome values require production data in approvals, `job_queue`, and `lead_pipeline`; live production data E2E remains unverified.
+- `follow_ups_sent` and `invoices_chased` follow the current spec by counting completed jobs, which means "completed" currently means the job generated an approval draft, not that the owner approved/sent it.
+
+Exact next recommended action:
+
+- Commit/push Priority 5. Next code build is Priority 6 Sent-Mail Voice Calibration unless live Gmail/Xero E2E testing takes priority.
 
 ### 2026-05-05 - Codex - Missed Response Detection
 
