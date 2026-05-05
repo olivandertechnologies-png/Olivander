@@ -1,6 +1,6 @@
 # Agent Handoff
 
-Last updated: 2026-05-01, Pacific/Auckland
+Last updated: 2026-05-05, Pacific/Auckland
 
 This is the shared handoff file for Codex, Claude, and any future coding agent working on Olivander. Its job is to preserve practical working context between agents without relying on chat history.
 
@@ -9,10 +9,11 @@ This is the shared handoff file for Codex, Claude, and any future coding agent w
 Before making changes, every agent should read:
 
 1. `AGENTS.md` or `CLAUDE.md`, depending on the tool.
-2. `docs/build_report.md`.
-3. `docs/build_report_agent_rules.md`.
-4. The latest entries in this file.
-5. `git status --short`.
+2. `PLATFORM_STATUS.md` — current feature status and prioritised next steps.
+3. `docs/build_report.md` — PRD specs and implementation plans.
+4. `docs/build_report_agent_rules.md`.
+5. The latest entries in this file.
+6. `git status --short`.
 
 Then inspect the files directly relevant to the task before editing.
 
@@ -31,6 +32,83 @@ Before finishing a meaningful work session, every agent should update this file 
 
 If the work changes product scope, build state, blockers, migrations, deployment status, or next step, also update `docs/build_report.md` using `docs/build_report_agent_rules.md`.
 
+## Mid-Task Context Handoff Protocol
+
+Context limits are a real constraint. Lost context means lost work and broken continuity. Follow this protocol without exception.
+
+### Before starting a substantial task
+
+A "substantial task" is anything that involves writing or editing more than two files, running migrations, or implementing a full feature end-to-end.
+
+1. **Assess the conversation length.** If the session already has many tool calls, long file reads, or system compression messages, treat it as context-long.
+2. **Estimate task size.** Multi-file features, large refactors, and migration sequences are high-risk for hitting limits mid-way.
+3. **If the task is large and the session is already long**, tell the user before starting:
+   > "This session has accumulated significant context. To avoid losing work mid-task, I recommend starting a fresh session for this. I'll write a full handoff entry first so the next agent can pick up exactly where we are."
+4. **If the task is medium-sized and the session is moderately long**, proceed but plan the work in atomic steps and commit progress to the handoff file at each step.
+
+### Warning signs that context is running low
+
+- System messages indicating conversation compression has occurred.
+- Noticeably slower responses.
+- Difficulty recalling earlier decisions or file contents from this session.
+- The conversation has covered multiple distinct features or tasks.
+
+When you notice any of these, do not try to rush through the remaining work. Stop at the next clean boundary.
+
+### What counts as a clean stopping boundary
+
+Good stopping points (safe to hand off):
+- After a file is fully written and syntactically complete.
+- After a migration is written but before it is applied.
+- After an endpoint is written but before its frontend component.
+- After tests pass for a completed unit.
+- After a commit.
+
+Bad stopping points (do not hand off here):
+- Mid-function.
+- Mid-migration.
+- After writing an API endpoint but before updating the router that uses it.
+- After frontend changes that break existing behaviour without a fix queued.
+
+### Mid-task handoff entry format
+
+Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
+
+```markdown
+### YYYY-MM-DD - Agent - TASK NAME (mid-task handoff)
+
+**Status**: INCOMPLETE — context limit reached. Next agent must continue from the exact point below.
+
+**What is fully done**:
+- [Each completed step, with file paths]
+
+**What is partially done**:
+- [File or function being worked on, current state, what remains]
+- [Any half-written file — paste the partial content if it is short enough]
+
+**Decisions made this session that are not in code yet**:
+- [Any design choice, naming decision, or approach agreed with the owner that hasn't been committed]
+
+**Files changed so far**:
+- `path/to/file` — what was done
+
+**Files that must still be changed to complete this task**:
+- `path/to/file` — what needs to happen
+
+**Exact next action**:
+- [One concrete instruction for the next agent — specific enough that they can start without re-reading the conversation]
+
+**Do not**:
+- [Any specific pitfall or decision already ruled out this session that would otherwise be re-opened]
+```
+
+### After writing the handoff
+
+1. Tell the user: "I've written a full mid-task handoff to `docs/agent_handoff.md`. Start a new session and the next agent will pick up from exactly where we stopped."
+2. Do not attempt further code changes after writing the handoff. The session is done.
+
+---
+
 ## Handoff Rules
 
 - Keep entries short, factual, and useful for the next agent.
@@ -43,17 +121,212 @@ If the work changes product scope, build state, blockers, migrations, deployment
 
 ## Current Snapshot
 
-- **Git**: working tree clean. All changes committed and pushed to GitHub main as of 2026-05-01.
+*Updated 2026-05-05*
+
+- **Git**: current session is committing/pushing all tracked changes requested by the owner, including the Dockerfile Debian Trixie package fix, Render/Gmail deployment wiring, Xero setup status update, PRD/status docs, and handoff updates.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
-- **DB migrations**: all 10 confirmed applied to Supabase as of 2026-05-01.
-- **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role.
-- **Webhook**: accepts secret via `?token=` query param. Code committed.
-- **Single blocker**: `PUBSUB_TOPIC = projects/olivandertechnologies/topics/gmail-watch` not yet added to Render env vars. Once added and Google reconnected in app, first end-to-end email test can run.
-- **Security note**: `WEBHOOK_SECRET` was shared in session — rotate after end-to-end test passes and update Pub/Sub subscription endpoint URL.
-- Sent-mail voice calibration: specced in `docs/build_report.md`, not implemented.
-- Calendar Command Centre: specced in `docs/build_report.md`, not implemented.
+- **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
+- **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
+- **Live backend**: `https://olivander.onrender.com`; `/health` returned `{"status":"ok"}` on 2026-05-03.
+- **Security note**: `WEBHOOK_SECRET` was shared in a prior session — rotate after E2E test passes, then update Pub/Sub push endpoint URL.
+- **Blocker**: Gmail watch activation still unverified. `PUBSUB_TOPIC` must be set on Render, then Google disconnected and reconnected in app Settings. First E2E email test cannot run until this is done.
+- **Xero**: owner confirmed Xero integration setup on 2026-05-05. Treat setup as owner-confirmed, not externally verified; live invoice creation → approval → send E2E still needs testing.
+- **Build priorities** (as of 2026-05-05 — see `PLATFORM_STATUS.md § Prioritised Next Steps` for full detail):
+  1. MVP infra: Gmail Pub/Sub verification + live Gmail/Xero E2E tests. Xero setup is owner-confirmed.
+  2. Unpaid invoices panel + manual reminder (new feature — not yet built)
+  3. Email → lead auto-link
+  4. Missed response detection (new feature — not yet built)
+  5. ROI outcomes dashboard (new feature — not yet built)
+  6. Voice calibration → Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
+- **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
+- **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
 ## Rolling Handoff Log
+
+### 2026-05-05 - Codex - Commit Xero Setup + Dockerfile Fix
+
+User request:
+
+- Xero integration is set up; commit everything and push.
+- Claude reported Render Docker build failure because Debian Trixie no longer provides `libgdk-pixbuf2.0-0`; expected fix is `libgdk-pixbuf-xlib-2.0-0`.
+
+Work completed:
+
+- Preserved the Dockerfile fix replacing `libgdk-pixbuf2.0-0` with `libgdk-pixbuf-xlib-2.0-0`.
+- Updated `PLATFORM_STATUS.md` and `docs/build_report.md` so Xero setup is owner-confirmed as of 2026-05-05 while live invoice creation → approval → send remains unverified.
+- Included all currently tracked modified files in the commit scope, including PRD DOCX updates, deployment config, backend OAuth/Pub/Sub wiring, tests, status docs, and handoff docs.
+
+Files changed:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `Dockerfile`
+- `Olivander_PRD.docx`
+- `Olivander_PRD_v6.docx`
+- `PLATFORM_STATUS.md`
+- `README.md`
+- `backend/.env.example`
+- `backend/auth/google.py`
+- `backend/config.py`
+- `backend/main.py`
+- `backend/tests/test_security.py`
+- `docs/agent_handoff.md`
+- `docs/api_reference.md`
+- `docs/build_report.md`
+- `render.yaml`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py -q` from `backend/` (7 tests).
+- Passed: `git diff --check`.
+- Text diff secret scan showed only placeholder env names and test dummy tokens; no obvious literal secrets in the text diff.
+- Docker build could not be verified locally because Docker CLI is installed but the Docker daemon socket is not running.
+
+Known blockers or risks:
+
+- Render auto-deploy still needs to be watched after push; local Docker build was not confirmed.
+- Gmail Pub/Sub watch activation and live inbound-email approval E2E are still unverified.
+- Xero setup is owner-confirmed, but live invoice creation → approval → send E2E is still unverified.
+- `WEBHOOK_SECRET` should still be rotated after E2E passes, then update the Pub/Sub push endpoint URL.
+
+Exact next recommended action:
+
+- Push the commit, watch the Render deployment, then run the live E2E tests: inbound Gmail → approval → sent reply, and invoice creation → Xero draft → approval → invoice sent.
+
+### 2026-05-05 - Claude - Market Research Integration + Doc Consolidation
+
+User request:
+
+- Integrate market research report (Wanaka A&P Show survey) to identify which workflows to prioritise.
+- Fix three structural problems: overlapping build docs, stale CLAUDE.md/AGENTS.md migrations section, stale handoff snapshot.
+
+Work completed:
+
+- Added `Market-Validated Core Workflows` table to `PLATFORM_STATUS.md` confirming invoice AR chasing and email triage as correct first wedges; identified two completely missing workflows.
+- Added **Priority 2 — Unpaid Invoices Panel + Manual Reminder** to `PLATFORM_STATUS.md`: `GET /api/invoices/unpaid`, `UnpaidInvoicesPanel`, per-row "Send Reminder" creates an approval action. Dedup guard prevents double-chasing.
+- Added **Priority 4 — Missed Response Detection** to `PLATFORM_STATUS.md`: thread-state tracking, 2h job, amber badge on dashboard.
+- Added **Priority 5 — ROI Outcomes Dashboard** to `PLATFORM_STATUS.md`: `GET /api/outcomes/summary` (6 rolling-30-day metrics), `OutcomesPanel` plain number display.
+- Added explicit Phase 1 out-of-scope list: social media, Shopify, SMS, staff rostering, supplier coordination.
+- Renumbered all downstream priorities (Email→Lead moved to P3, Missed Response P4, ROI P5, Voice P6, Calendar P7, Workspace P8, Trust P9, Hardening P10).
+- Clarified document responsibilities in `docs/build_report.md`: added Document Responsibilities table, updated Next Step to point at PLATFORM_STATUS.md, added 2026-05-05 change log entry.
+- Fixed stale "Pending DB Migrations" section in `CLAUDE.md` and `AGENTS.md` — all 10 confirmed applied; replaced with accurate table list and pointer to PLATFORM_STATUS.md.
+- Updated Key Docs table in `CLAUDE.md` and `AGENTS.md` with "Update when" column and sync warning.
+- Updated current snapshot in this file.
+
+Files changed:
+
+- `PLATFORM_STATUS.md`
+- `docs/build_report.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Documentation pass only. No code written. No tests run.
+
+Known blockers:
+
+- Gmail watch activation still unverified (see snapshot above).
+- Xero redirect URI still needs registering.
+
+Next recommended action:
+
+- Complete Priority 1 MVP infra (Xero URI + Gmail Pub/Sub + E2E tests), then build the Unpaid Invoices Panel (Priority 2) — it's the shortest path to a visible, provable ROI demo for a first customer.
+
+### 2026-05-03 - Codex - Outlook Requirement Added To PRDs
+
+User request:
+
+- Add to the PRDs that Olivander needs a Microsoft connection specifically for Outlook because many companies use Outlook instead of Gmail.
+
+Work completed:
+
+- Updated `Olivander_PRD_v6.docx` to make Microsoft Outlook/Microsoft 365 a required first-class email/calendar provider.
+- Updated `Olivander_PRD.docx` with the same requirement for v5 continuity.
+- Adjusted PRD wording across product definition, architecture, email workflow, stack tables, roadmap, and implementation guardrails so future work is provider-neutral instead of Gmail-only.
+- Added a Microsoft Outlook/Microsoft 365 requirement and implementation plan to `docs/build_report.md`.
+
+Files changed:
+
+- `Olivander_PRD_v6.docx`
+- `Olivander_PRD.docx`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Extracted DOCX text with `python-docx` and confirmed Outlook/Microsoft Graph requirement appears in both PRDs.
+- Full visual DOCX render QA via `render_docx.py` was not completed because LibreOffice/`soffice` is not installed in the local environment.
+- Generated Quick Look thumbnails for both PRDs and visually checked the first-page previews. A table font-size issue in the edited v6 stack row was found and corrected.
+- No automated tests run because this was documentation-only.
+
+Known blockers or risks:
+
+- Microsoft Outlook is now specified but not implemented.
+- Future implementation should use Microsoft Graph behind existing provider interfaces, not a parallel Gmail-specific workflow.
+
+Exact next recommended action:
+
+- Finish the Gmail first-customer live test first. After the Gmail trust loop passes, implement sent-mail voice calibration, then build Microsoft Outlook/Microsoft 365 as the next provider integration.
+
+### 2026-05-03 - Codex - First Customer Gmail Watch Deployment Wiring
+
+User request:
+
+- Continue with what needs to happen for Olivander's first customer.
+
+Work completed:
+
+- Read `AGENTS.md`, `docs/build_report.md`, `docs/build_report_agent_rules.md`, latest handoff entries, and `git status --short`.
+- Added non-secret `BACKEND_ORIGIN=https://olivander.onrender.com` and `PUBSUB_TOPIC=projects/olivandertechnologies/topics/gmail-watch` to `render.yaml`.
+- Added `PUBSUB_TOPIC` to `backend/.env.example` and `backend/config.py`.
+- Updated backend origin defaults/docs from stale `https://olivander-api.onrender.com` to live `https://olivander.onrender.com`.
+- Added a production startup guard requiring `PUBSUB_TOPIC` on Render/Railway so Gmail watch setup cannot silently ship disabled.
+- Updated Google OAuth callback to use central config for the Pub/Sub topic before registering Gmail watches.
+- Updated security/OAuth tests for the current PKCE helper signature and `/api/connections` response shape.
+- Added a focused test proving OAuth callback registers a Gmail watch and enqueues renewal when a Pub/Sub topic is configured.
+- Updated `docs/build_report.md` so OAuth/migration status no longer points at resolved blockers.
+
+Files changed:
+
+- `render.yaml`
+- `backend/.env.example`
+- `backend/config.py`
+- `backend/main.py`
+- `backend/auth/google.py`
+- `backend/tests/test_security.py`
+- `README.md`
+- `docs/api_reference.md`
+- `PLATFORM_STATUS.md`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py -q` from `backend/` (7 tests on Python 3.12).
+- Live check: `https://olivander.onrender.com/health` returned `{"status":"ok"}` after cold start.
+- Live check: `POST https://olivander.onrender.com/webhook/gmail` without token returned 403, confirming the webhook route exists and rejects unauthenticated calls.
+- Live check: `https://olivander-api.onrender.com` returned Render `no-server` 404, so that host should not be used for first-customer callbacks.
+- Initial attempts with global `pytest`/`python3` were not usable; `uv` with the bundled Python 3.12 runtime was used for an isolated requirements-backed run.
+
+Known blockers or risks:
+
+- Live Render env variables were not checked directly in this session.
+- Google Pub/Sub subscription endpoint was not checked directly and may still point at the stale `olivander-api.onrender.com` host from the 2026-05-01 setup.
+- Google still needs to be disconnected and reconnected in app Settings after Render has the topic value.
+- Real inbound-email approval flow still needs live testing.
+- `WEBHOOK_SECRET` should be rotated after the end-to-end test passes, then the Pub/Sub push endpoint URL must be updated.
+- Pre-existing `Dockerfile` edit remains untouched.
+
+Exact next recommended action:
+
+1. Verify Render deployed/synced `BACKEND_ORIGIN=https://olivander.onrender.com` and `PUBSUB_TOPIC=projects/olivandertechnologies/topics/gmail-watch`.
+2. Verify Pub/Sub subscription `gmail-watch-push` pushes to `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>`.
+3. Disconnect and reconnect Google in app Settings.
+4. Send a fake customer enquiry to `olivandertechnologies@gmail.com`.
+5. Watch Render logs for webhook POST, classification, draft, approval, and notification email.
+6. Approve from the notification and confirm the Gmail reply is sent.
 
 ### 2026-05-01 - Claude - Full Pub/Sub Setup + Commit All Changes
 

@@ -17,6 +17,8 @@ services:
         sync: false
       - key: FRONTEND_ORIGIN
         sync: false
+      - key: BACKEND_ORIGIN
+        value: https://olivander.onrender.com
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
@@ -31,3 +33,5 @@ services:
         sync: false
       - key: WEBHOOK_SECRET
         sync: false
+      - key: PUBSUB_TOPIC
+        value: projects/olivandertechnologies/topics/gmail-watch

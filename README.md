@@ -19,14 +19,16 @@ This repo uses a [Render Blueprint](https://render.com/docs/blueprint-spec) (`re
 | `RENDER` | Set to `true` (enables production mode) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL (e.g. `https://olivander-api.onrender.com/auth/google/callback`) |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL (e.g. `https://olivander.onrender.com/auth/google/callback`) |
 | `FRONTEND_ORIGIN` | Frontend URL (e.g. `https://olivander.vercel.app`) |
+| `BACKEND_ORIGIN` | Backend URL used in approval links (e.g. `https://olivander.onrender.com`) |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service-role key (bypasses RLS) |
 | `GROQ_API_KEY` | Groq API key for LLM |
 | `JWT_SECRET` | Secret for HS256 JWT session tokens |
 | `ENCRYPTION_KEY` | Fernet key for encrypting OAuth tokens |
 | `WEBHOOK_SECRET` | Secret for Gmail Pub/Sub webhook auth |
+| `PUBSUB_TOPIC` | Gmail Pub/Sub topic (`projects/olivandertechnologies/topics/gmail-watch`) |
 
 Generate secrets:
 ```bash

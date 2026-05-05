@@ -21,6 +21,7 @@ from config import (
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
     GOOGLE_SCOPES,
+    PUBSUB_TOPIC,
 )
 from db.supabase import get_supabase_client
 from gmail.client import setup_gmail_watch
@@ -240,7 +241,7 @@ async def auth_google_callback(request: Request) -> HTMLResponse:
     )
 
     # Set up Gmail push notifications if a Pub/Sub topic is configured.
-    pubsub_topic = os.getenv("PUBSUB_TOPIC")
+    pubsub_topic = PUBSUB_TOPIC
     if pubsub_topic:
         try:
             setup_gmail_watch(access_token, pubsub_topic)

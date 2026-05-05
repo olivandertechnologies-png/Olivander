@@ -1,5 +1,26 @@
 # Olivander Platform Status
-*Last updated: 2026-05-01 — full codebase annotation by Claude*
+*Last updated: 2026-05-05 — market research integrated; Xero setup owner-confirmed; missed response detection and ROI dashboard added to build plan*
+
+---
+
+## Market-Validated Core Workflows
+
+Market research (Wanaka A&P Show survey + secondary sources) identified the workflows SMEs will actually pay for. Build order follows measured pain and provable ROI.
+
+| Workflow | Research signal | Build status |
+|----------|-----------------|--------------|
+| Invoice reminders & AR chasing (automated) | Xero data: avg 24.8-day payment delay; most measurable ROI | ✅ Built (Day-7, Day-14, Day-21 chasers) |
+| Unpaid invoices panel + manual reminder | Owner needs to see AR state and trigger reminders on demand, not just wait for auto-chasers | ❌ Missing |
+| Customer follow-up & new lead sequences | 10 hrs/wk lost to admin; missed follow-up = lost revenue | ✅ Built (+48h, +5d, +10d sequences) |
+| Quote follow-up | Directly linked to won/lost jobs | ✅ Built (Day-5 chaser + PDF) |
+| Email triage & draft reply | Core time sink; trust-building feature | ✅ Built |
+| Booking / scheduling automation | Frequent pain for trades, tourism, professional services | ✅ Backend built; UI partial |
+| Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ❌ Missing |
+| Missed response detection | Surfaces emails that arrived but were never replied to | ❌ Missing |
+| ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ❌ Missing |
+| Voice calibration | Draft quality must sound like the owner or trust collapses | ❌ Missing |
+
+**Explicitly out of scope for Phase 1:** social media automation, Shopify integration, Microsoft Outlook/365, staff rostering, supplier coordination, SMS channel. Focus only on the workflows above.
 
 ---
 
@@ -9,11 +30,11 @@
 |-------|--------|-------|
 | Frontend (React/Vite) | **Live** | olivander.vercel.app |
 | Backend (FastAPI) | **Live** | Render (previously Railway) |
-| Database (Supabase) | **Active** | PostgreSQL + pgvector configured; migrations 003–010 written but unconfirmed applied |
+| Database (Supabase) | **Active** | PostgreSQL + pgvector configured; migrations 001–010 confirmed applied as of 2026-05-01 |
 | AI pipeline (Groq) | **Live** | `llama-3.3-70b-versatile` — classify, draft, plan, learn |
 | Gmail OAuth | **Working** | Confirmed 2026-05-01 — callback 200 OK, business upserted, Connected shown in UI |
 | Google Calendar | **Implemented** | `gcal/client.py` — slot proposals, event creation, list events |
-| Xero | **Implemented, untested live** | OAuth + invoice creation + chaser logic in code |
+| Xero | **Implemented; setup owner-confirmed; invoice E2E unverified** | OAuth + invoice creation + chaser logic in code. Owner confirmed Xero setup on 2026-05-05; live invoice approval/send test still required |
 | Provider abstraction | **Done** | `providers/base.py` + gmail/gcal/xero concrete providers |
 | Job queue | **Done** | `jobs/queue.py` — 30s polling loop, 4-worker thread pool |
 | Learning loop | **Done** | `agent/learning.py` — edit pattern extraction + memory promotion |
@@ -70,6 +91,8 @@
 | Natural language → quote | ✅ Done | `api/quotes.py` |
 | Quote PDF (WeasyPrint, A4, inline CSS) | ✅ Done | `api/quotes.py:generate_quote_pdf()` |
 | Quote follow-up (Day-5) | ✅ Done | `jobs/handlers.py:handle_follow_up_email()` |
+| Unpaid invoices panel (live Xero query) | ❌ Missing | No UI to see outstanding invoices; owner cannot see AR state |
+| Manual reminder trigger from dashboard | ❌ Missing | No on-demand reminder; only automated Day-7/14/21 chasers exist |
 
 ### Calendar
 
@@ -98,7 +121,7 @@
 | Feature | Status | Location |
 |---------|--------|----------|
 | Google OAuth (PKCE, CSRF via oauth_states) | ✅ Working | Confirmed 2026-05-01 — full flow tested live |
-| Xero OAuth | ✅ Done | `auth/xero.py` — redirect URI needs Xero portal registration |
+| Xero OAuth | ✅ Setup owner-confirmed | `auth/xero.py`; owner confirmed Xero setup on 2026-05-05. Live invoice approval/send test still required |
 | JWT session (7-day) | ✅ Done | `auth/tokens.py` + `auth/deps.py` |
 | Token encryption at rest (Fernet) | ✅ Done | `auth/tokens.py:_encrypt()/_decrypt()` |
 | Auto-refresh Google token (5-min ahead) | ✅ Done | `auth/tokens.py:get_valid_token()` |
@@ -176,16 +199,18 @@
 
 ## Key Technical Debt
 
-1. **Google OAuth `invalid_request`** — Single MVP blocker. All real usage depends on this.
-2. **DB migrations unconfirmed** — Code assumes tables exist; runtime will fail without them.
-3. **Xero redirect URI** — Must be registered in Xero developer portal.
-4. **pgvector not wired** — `agent/rag.py` uses keyword priority only; semantic retrieval requires an embedding model (not Groq — needs OpenAI or sentence-transformers) and `embedding vector(768)` column on memory.
-5. **Workspace ↔ approvals gap** — `workspace_jobs/messages/actions` are isolated tables; no FK links to approvals. Actions created by the approval flow don't appear in the workspace.
-6. **No email → lead auto-link** — Inbound leads are classified and approved, but not auto-created as leads in the pipeline. Manual entry required.
-7. **DashboardApp.jsx is a 900-line monolith** — No state management library; all state in component refs/timers. Works, but will become painful at next scale.
-8. **Real-time via polling only** — 30s email sync and 30s job queue. No WebSocket; no push. Good for MVP, not for multi-tenant.
-9. **Quote PDF styling** — Inline CSS only; no template system. Hard to brand-customise.
-10. **Auto-send countdown (Tier 2)** — Specified in PRD but not implemented. All actions are Tier 3.
+1. **Google OAuth `invalid_request`** — ✅ RESOLVED 2026-05-01.
+2. **DB migrations unconfirmed** — ✅ RESOLVED 2026-05-01. All 001–010 confirmed applied.
+3. **Xero setup** — ✅ Owner-confirmed 2026-05-05. Live invoice approval/send test still required.
+4. **No missed response detection** — Emails that arrive and receive no reply are invisible. No thread-state tracking exists; unanswered enquiries are silently lost.
+5. **No ROI outcomes panel** — There is no way for the owner to see what Olivander has done for them. Without this, there is no proof of value, no referral story, and no retention anchor.
+6. **pgvector not wired** — `agent/rag.py` uses keyword priority only; semantic retrieval requires an embedding model (not Groq — needs OpenAI or sentence-transformers) and `embedding vector(768)` column on memory.
+7. **Workspace ↔ approvals gap** — `workspace_jobs/messages/actions` are isolated tables; no FK links to approvals. Actions created by the approval flow don't appear in the workspace.
+8. **No email → lead auto-link** — Inbound leads are classified and approved, but not auto-created as leads in the pipeline. Manual entry required.
+9. **DashboardApp.jsx is a 900-line monolith** — No state management library; all state in component refs/timers. Works, but will become painful at next scale.
+10. **Real-time via polling only** — 30s email sync and 30s job queue. No WebSocket; no push. Good for MVP, not for multi-tenant.
+11. **Quote PDF styling** — Inline CSS only; no template system. Hard to brand-customise.
+12. **Auto-send countdown (Tier 2)** — Specified in PRD but not implemented. All actions are Tier 3.
 
 ---
 
@@ -193,6 +218,8 @@
 
 | Gap | PRD requirement | Current state |
 |-----|-----------------|---------------|
+| Missed response detection | Market research: "missed follow-ups reduced" is core ROI metric | No thread-state tracking; unanswered emails are invisible |
+| ROI outcomes dashboard | Market research: primary sales and retention proof point | No outcomes panel; owner cannot see what Olivander has done |
 | pgvector semantic retrieval | §7.1 "pgvector query: top-3 chunks per query" | Keyword priority fallback only |
 | Embedding model | §3.3 "RAG retrieval: pgvector 768-dim + Groq" | No embedding API; no vector column on memory |
 | Tier 2 auto-send countdown | §5.1 "2-hour window, sends if not rejected" | Not implemented |
@@ -210,71 +237,115 @@
 
 1. **Google OAuth ✅ DONE** — Confirmed working 2026-05-01. Callback 200 OK, business upserted, Connected shown in UI.
 
-2. **Apply and verify remaining DB migrations against Supabase**
-   - Run each migration in sequence via Supabase SQL editor
-   - Confirm tables exist: `ai_usage`, `job_queue`, `client_notes`, `leads`, workspace tables
-   - Verify unique constraint on `memory(business_id, key)` — required for `set_memory_value()` atomic upsert
-   - *Files*: `backend/db/migrations/003_ai_usage.sql` through `010_first_customer_workspace.sql`
+2. **DB migrations ✅ DONE** — Migrations `001` through `010` confirmed applied to Supabase as of 2026-05-01.
 
-3. **Register Xero redirect URI in Xero developer portal**
-   - Must be: `https://olivander-api.onrender.com/auth/xero/callback`
-   - Verify `XERO_REDIRECT_URI` env var matches exactly on Render
+3. **Xero setup ✅ OWNER-CONFIRMED** — Owner confirmed the Xero integration is set up on 2026-05-05.
+   - Expected redirect URI: `https://olivander.onrender.com/auth/xero/callback`
+   - If invoice E2E fails, verify `XERO_REDIRECT_URI` on Render matches exactly
 
 4. **Verify Gmail Pub/Sub watch**
    - Confirm Pub/Sub topic and push subscription exist in Google Cloud Console
-   - Confirm webhook push URL is `https://olivander-api.onrender.com/webhook/gmail`
-   - Confirm `WEBHOOK_SECRET` matches on both Render and the Pub/Sub push subscription header
-   - Run a real onboarding dry run: connect Google → answer questions → preview drafts → launch
+   - Confirm webhook push URL is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>`
+   - Confirm `WEBHOOK_SECRET` matches on both Render and the Pub/Sub push subscription URL token
+   - Verify Render has `BACKEND_ORIGIN=https://olivander.onrender.com` and `PUBSUB_TOPIC=projects/olivandertechnologies/topics/gmail-watch`
+   - Disconnect and reconnect Google, then send a real inbound enquiry and verify approval notification → approve → Gmail reply sent
 
-### Priority 2 — Email → Lead Auto-Link
+5. **Run live Xero invoice E2E**
+   - Create invoice from owner instruction → queue approval → approve → confirm invoice sent in Xero
 
-5. **Auto-create leads from `new_lead` classified emails**
+### Priority 2 — Unpaid Invoices Panel + Manual Reminder
+
+The automated Day-7/14/21 chasers work invisibly. The owner has no way to see the current AR state or send a reminder outside that schedule. This is the most visible part of the invoice workflow.
+
+5. **`GET /api/invoices/unpaid`** — Query Xero live for all AUTHORISED invoices with `AmountDue > 0`, return sorted by oldest due date first. Fields: invoice number, contact name, amount due, due date, days overdue.
+   - *Files*: new endpoint in `api/invoices.py`, `xero/client.py:list_unpaid_invoices()`
+6. **UnpaidInvoicesPanel in dashboard** — Table showing each unpaid invoice with: contact name, amount due (NZD), days overdue (amber if 1–14, red if 15+), and a "Send Reminder" button per row.
+   - *Files*: new `components/UnpaidInvoicesPanel.jsx`, wired into `DashboardApp.jsx`
+7. **Manual reminder trigger** — "Send Reminder" creates an approval action (same flow as automated chaser): Groq drafts a payment reminder email, queued for owner approval before anything is sent. Owner can edit the draft before approving.
+   - *Files*: `api/invoices.py`, `api/actions.py`, `notifications/email_sender.py`
+8. **Dedup guard** — If an automated chaser job is already scheduled for that invoice within 48h, show a warning rather than creating a duplicate approval.
+
+### Priority 3 — Email → Lead Auto-Link
+
+9. **Auto-create leads from `new_lead` classified emails**
    - In `gmail/webhook.py` after classification = `new_lead`, call `create_lead()` if no existing lead for that sender email
    - Link lead `thread_id` to the Gmail thread_id for future dedup
    - Show lead count badge on LeadPipelinePanel when new lead is auto-created
    - *Files*: `gmail/webhook.py`, `db/supabase.py`, `api/leads.py`
 
-### Priority 3 — Sent-Mail Voice Calibration
+### Priority 4 — Missed Response Detection
 
-6. **Implement `agent/voice.py`** — Scan last 50 sent emails, extract style profile via Groq
-7. **Add `POST /api/onboarding/voice-calibration`** — Returns profile + example draft
-8. **Extend OnboardingWizard step 3** — "Sounds like you?" card with editable example
-9. **Inject `owner_voice_profile` into `draft_reply()`** — Load in `get_business_context`
-10. **Store profile in memory** — Keys: `owner_voice_profile`, `owner_voice_calibrated_at`, `owner_voice_source_count`
+Market research: "missed follow-ups reduced" is a top-5 ROI metric SMEs care about. Unanswered emails are invisible lost revenue.
+
+10. **Detect unanswered inbound emails** — After classification, if no reply thread exists within a configurable window (default 4h business hours), create a `missed_response` pending action in the approval queue
+    - Track `last_inbound_at` and `replied_at` per thread in a new `thread_state` table (or column on approvals)
+    - Surface as an amber-badge card in the dashboard: "3 enquiries not yet replied to"
+    - *Files*: `gmail/webhook.py`, `db/supabase.py`, new `api/threads.py`, `ApprovalCard.jsx`
+11. **Missed response job** — `jobs/handlers.py` handler `handle_missed_response_check` runs every 2h, queries threads with no reply, creates or surfaces pending action cards
+12. **Dismiss / snooze** — Owner can mark a missed response as "handled outside Olivander" to clear the badge
+
+### Priority 5 — ROI Outcomes Dashboard
+
+Market research: the product sells on "admin hours saved, emails followed up, invoices chased, response times improved." Without visible proof of value, customers don't renew and don't refer. This is the single most important retention and referral driver.
+
+13. **`GET /api/outcomes/summary`** — Returns for the authenticated business, rolling 30-day:
+    - `emails_triaged` — count of approved email actions
+    - `follow_ups_sent` — count of follow_up_email jobs completed
+    - `invoices_chased` — count of chase_invoice jobs completed
+    - `quotes_sent` — count of quote actions approved
+    - `avg_response_time_hours` — mean gap between inbound email and approved reply
+    - `leads_created` — count of auto-created leads
+    - *Files*: new `api/outcomes.py`, `db/supabase.py`
+14. **OutcomesPanel in dashboard** — A compact panel (not a separate page) showing the six metrics as plain numbers with labels. Style: DM Sans 600 stat number (28px), DM Sans 400 label (12px, Slate Muted). No charts in Phase 1 — numbers only.
+    - Headline copy: "In the last 30 days, Olivander handled X admin tasks for you."
+    - *Files*: new `components/OutcomesPanel.jsx`, wired into `DashboardApp.jsx`
+15. **Activity log counts** — Derive counts from existing `activity` table where possible before adding new tracking columns; add columns only where activity log is insufficient
+
+### Priority 6 — Sent-Mail Voice Calibration
+
+Draft quality must sound like the owner. Trust collapses if recipients notice a different tone.
+
+16. **Implement `agent/voice.py`** — Scan last 50 sent emails, extract style profile via Groq
+17. **Add `POST /api/onboarding/voice-calibration`** — Returns profile + example draft
+18. **Extend OnboardingWizard step 3** — "Sounds like you?" card with editable example
+19. **Inject `owner_voice_profile` into `draft_reply()`** — Load in `get_business_context`
+20. **Store profile in memory** — Keys: `owner_voice_profile`, `owner_voice_calibrated_at`, `owner_voice_source_count`
     - *Full spec*: `docs/build_report.md §Sent-Mail Voice Calibration`
 
-### Priority 4 — Calendar Command Centre UI
+### Priority 7 — Calendar Command Centre UI
 
-11. **TodayPanel** — Add today's events from Google Calendar alongside manual jobs
-12. **Slot proposal UI** — When a booking_request approval is shown, display proposed slots as selectable options
-13. **Calendar event approval cards** — Approve creates event + sends confirmation draft together
-14. **Schedule gap detection** — Surface unscheduled jobs and double-bookings in TodayPanel
+Backend is fully built. The UI gap means booking automation is invisible to the owner.
+
+21. **TodayPanel** — Add today's events from Google Calendar alongside manual jobs
+22. **Slot proposal UI** — When a booking_request approval is shown, display proposed slots as selectable options
+23. **Calendar event approval cards** — Approve creates event + sends confirmation draft together
+24. **Schedule gap detection** — Surface unscheduled jobs and double-bookings in TodayPanel
     - *Full spec*: `docs/build_report.md §Calendar Command Centre`
 
-### Priority 5 — Workspace ↔ Approvals Integration
+### Priority 8 — Workspace ↔ Approvals Integration
 
-15. **Link workspace actions to approvals** — When an approval is created for a message in the workspace, surface it in the workspace action cards (not just the Approvals panel)
-16. **Auto-create workspace message from inbound email** — When webhook processes a new email and creates an approval, also create or update a `workspace_message` row
+25. **Link workspace actions to approvals** — When an approval is created for a message in the workspace, surface it in the workspace action cards (not just the Approvals panel)
+26. **Auto-create workspace message from inbound email** — When webhook processes a new email and creates an approval, also create or update a `workspace_message` row
 
-### Priority 6 — Trust & Autonomy
+### Priority 9 — Trust & Autonomy
 
-17. **Tier 2 auto-send countdown** — After owner has approved 10+ consecutive actions for a classification, display suggestion to promote to Tier 2 (2hr auto-send window) with explicit confirmation
-18. **Trust progression UI** — Counter on SettingsPanel showing consecutive approvals per classification; promote button triggers memory update
+27. **Tier 2 auto-send countdown** — After owner has approved 10+ consecutive actions for a classification, display suggestion to promote to Tier 2 (2hr auto-send window) with explicit confirmation
+28. **Trust progression UI** — Counter on SettingsPanel showing consecutive approvals per classification; promote button triggers memory update
 
-### Priority 7 — Hardening (before multi-tenant)
+### Priority 10 — Hardening (before multi-tenant)
 
-19. **pgvector semantic search** — Add `embedding vector(768)` to memory table; call an embedding API (OpenAI text-embedding-3-small) on memory writes; replace keyword priority in `agent/rag.py` with cosine similarity
-20. **Pagination** — Add cursor-based pagination to workspace queries and approval list
-21. **Email → lead duplicate guard** — Check existing leads by thread_id before auto-creating
-22. **DashboardApp.jsx split** — Extract auth state, approval state, workspace state into separate context providers or Zustand stores
+29. **pgvector semantic search** — Add `embedding vector(768)` to memory table; call an embedding API (OpenAI text-embedding-3-small) on memory writes; replace keyword priority in `agent/rag.py` with cosine similarity
+30. **Pagination** — Add cursor-based pagination to workspace queries and approval list
+31. **Email → lead duplicate guard** — Check existing leads by thread_id before auto-creating
+32. **DashboardApp.jsx split** — Extract auth state, approval state, workspace state into separate context providers or Zustand stores
 
 ---
 
 ## MVP Ship Checklist
 
 - [x] Google OAuth resolved and tested end-to-end — confirmed 2026-05-01
-- [ ] Xero redirect URI registered in Xero developer portal
-- [ ] DB migrations 003–010 applied and confirmed in Supabase
+- [x] Xero redirect URI registered in Xero developer portal — owner-confirmed 2026-05-05
+- [x] DB migrations 003–010 applied and confirmed in Supabase — confirmed 2026-05-01
 - [ ] `GOOGLE_REDIRECT_URI` env var on Render matches Google Cloud Console exactly
 - [ ] Gmail Pub/Sub topic + push subscription configured with correct `WEBHOOK_SECRET`
 - [ ] End-to-end test: inbound email → classification → draft → approval email → approve from phone → reply sent

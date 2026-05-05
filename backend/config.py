@@ -52,6 +52,7 @@ GROQ_API_KEY = get_secret("GROQ_API_KEY")
 JWT_SECRET = get_secret("JWT_SECRET")
 ENCRYPTION_KEY = get_secret("ENCRYPTION_KEY")
 WEBHOOK_SECRET = get_secret("WEBHOOK_SECRET")
+PUBSUB_TOPIC = get_secret("PUBSUB_TOPIC")
 XERO_CLIENT_ID = get_secret("XERO_CLIENT_ID")
 XERO_CLIENT_SECRET = get_secret("XERO_CLIENT_SECRET")
 XERO_REDIRECT_URI = (
@@ -60,8 +61,8 @@ XERO_REDIRECT_URI = (
 )
 
 BACKEND_ORIGIN = (
-    get_secret("BACKEND_ORIGIN", "https://olivander-api.onrender.com")
-    or "https://olivander-api.onrender.com"
+    get_secret("BACKEND_ORIGIN", "https://olivander.onrender.com")
+    or "https://olivander.onrender.com"
 )
 
 GOOGLE_SCOPES = [

@@ -51,6 +51,8 @@ handler = RotatingFileHandler("logs/app.log", maxBytes=5_000_000, backupCount=3)
 logging.basicConfig(handlers=[handler, logging.StreamHandler()], level=logging.INFO)
 logger = logging.getLogger("olivander")
 
+IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("RENDER") is not None
+
 REQUIRED = [
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
@@ -61,11 +63,12 @@ REQUIRED = [
     "ENCRYPTION_KEY",
     "WEBHOOK_SECRET",
 ]
+if IS_PRODUCTION:
+    REQUIRED.append("PUBSUB_TOPIC")
+
 for variable in REQUIRED:
     if not get_secret(variable):
         raise RuntimeError(f"Missing required configuration: {variable}")
-
-IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("RENDER") is not None
 
 app = FastAPI(
     title="Olivander Backend",
@@ -79,7 +82,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _CORS_ORIGINS = list({
     "http://localhost:5173",
     "https://olivander.vercel.app",
-    "https://olivander-api.onrender.com",
+    "https://olivander.onrender.com",
     _FRONTEND_ORIGIN,
 })
 

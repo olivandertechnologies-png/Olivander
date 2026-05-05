@@ -1,6 +1,6 @@
 # Olivander Build Report
 
-Last updated: 2026-05-01, Pacific/Auckland
+Last updated: 2026-05-03, Pacific/Auckland
 
 This is the working build report for Olivander. Keep it current when product scope changes, when a meaningful implementation change lands, or when a blocker is resolved. Agents maintaining this file must follow `docs/build_report_agent_rules.md` and leave session continuity notes in `docs/agent_handoff.md`.
 
@@ -12,7 +12,15 @@ Use these sources in this order when deciding what to build:
 2. `Olivander_First_Customer_Build_Spec_Two_Plans.pdf` - first customer tradie scope and plan split.
 3. `Olivander_PRD.docx` - PRD v5 detail where v6 does not contradict it.
 4. `AGENTS.md` - codebase rules, brand rules, and implementation guardrails.
-5. `PLATFORM_STATUS.md` - historical status snapshot from 2026-04-22. Useful, but not guaranteed to match the live deployment or current git state.
+5. `PLATFORM_STATUS.md` - **authoritative feature status, migration table, and prioritised next steps.** This file is the day-to-day build tracker. Update it when a feature lands, a priority changes, or a migration is applied. This report (`build_report.md`) is the PRD-aligned spec and implementation plan doc — update it when product requirements change, new features are scoped, or implementation plans are written.
+
+## Document Responsibilities
+
+| Document | Owned by | Update when |
+|----------|----------|-------------|
+| `PLATFORM_STATUS.md` | Both agents | Feature status changes, priority order changes, migration applied/confirmed, new gap identified |
+| `docs/build_report.md` | Both agents | New PRD requirement added, implementation plan written, product scope changes, open questions resolved |
+| `docs/agent_handoff.md` | Both agents | End of any meaningful session — what changed, blockers, next action |
 
 ## Build Principle For This Report
 
@@ -28,6 +36,7 @@ Core promise:
 - Draft the next reply, follow-up, booking step, quote, or invoice action.
 - Show why the action exists.
 - Require owner approval before anything customer-facing is sent or changed.
+- Support both Google and Microsoft email/calendar stacks over time. Gmail proves the first loop, but Microsoft Outlook/Microsoft 365 is a required first-class provider because many target companies use Outlook instead of Gmail.
 
 ## Current Implementation State
 
@@ -42,14 +51,20 @@ Confirmed from repo inspection:
 - Learning loop: owner edits are compared against AI drafts and can promote repeated tone instructions into memory.
 - First-customer workspace: migrations and API support exist for jobs, messages, and admin action cards.
 
+Confirmed since the original repo inspection:
+
+- Google OAuth was confirmed working on 2026-05-01 from Render callback logs and the connected app state. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
+- Supabase migrations `001` through `010` were confirmed applied on 2026-05-01 from live Supabase checks recorded in `docs/agent_handoff.md`.
+- Gmail Pub/Sub topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` were created on 2026-05-01. The webhook accepts `?token=` for Pub/Sub push compatibility.
+- Live frontend `https://olivander.vercel.app` is built against backend `https://olivander.onrender.com`; `/health` returned `{"status":"ok"}` on 2026-05-03 after cold start.
+
 Unconfirmed or blocked:
 
-- Google OAuth still appears to be the MVP blocker from the PRDs and status doc. The known issue is `invalid_request` on OAuth callback.
-- Live deployment state has not been verified in this report.
-- Supabase migration application is not confirmed. Migrations `003` through `010` need to be checked against the real database.
-- Xero OAuth/invoice flow is implemented in code but still needs a live end-to-end test.
-- Gmail Pub/Sub watch configuration must be verified after OAuth is fixed.
-- The working tree already contains many uncommitted changes. Treat pre-existing diffs as prior work unless explicitly reviewed.
+- Gmail watch activation on the deployed service is not yet verified. The missing `PUBSUB_TOPIC` deployment config was added to `render.yaml` and `backend/.env.example` on 2026-05-03, but the real Render env/deploy still needs to be checked.
+- The previous docs/handoff used `https://olivander-api.onrender.com`, which returned Render `no-server` 404 on 2026-05-03. Deployment config and docs now use `https://olivander.onrender.com`; the Google Pub/Sub push subscription endpoint must be checked and updated if it still points at the stale host.
+- After Render has the topic value, Google must be disconnected and reconnected in app Settings so `/auth/google/callback` calls `setup_gmail_watch()`.
+- Xero developer-portal setup is owner-confirmed as of 2026-05-05. The Xero OAuth/invoice flow is implemented in code, but invoice creation → approval → send still needs a live end-to-end test.
+- The working tree contains a pre-existing `Dockerfile` edit. Treat it as prior work unless explicitly reviewed.
 
 ## MVP Ship Bar
 
@@ -70,6 +85,41 @@ Use the two-plan tradie build as the near-term product lens:
 - Admin Plus: everything in Starter plus invoice chasing, money-at-risk views, calendar awareness, richer job detail, scheduling gaps, and business snapshot.
 
 Do not expand into full job management, native mobile, complex reporting, payments, route optimisation, or WhatsApp before the first customer proves weekly use.
+
+## New Requirement: Microsoft Outlook / Microsoft 365 Connection
+
+Owner request added on 2026-05-03:
+
+Olivander must support Microsoft Outlook/Microsoft 365 as a first-class email and calendar connection. Many target companies use Outlook instead of Gmail, especially established trades and service businesses, so Outlook support is required for market coverage rather than a long-term nice-to-have.
+
+### Product Intent
+
+The Gmail-first MVP should prove the approval-first admin loop, but the architecture and next provider build must make Outlook a native path. Owners should be able to connect either Google or Microsoft, then receive the same inbox triage, booking handling, approval notification, and calendar-aware drafting experience.
+
+### Behaviour
+
+- Add Microsoft OAuth connection for Outlook mail and Outlook Calendar via Microsoft Graph.
+- Implement `EmailProvider` and `CalendarProvider` concrete adapters for Microsoft Graph.
+- Support Outlook inbox change notifications/webhooks, thread fetch, send, unread listing, attachment fetch, token refresh, and disconnect/reconnect.
+- Keep Gmail and Outlook behind the same provider interfaces so workers do not contain Gmail-only assumptions.
+- Use Outlook Calendar availability for booking slot proposals when Microsoft is the connected provider.
+- Make Settings show Google and Microsoft as separate connection options, with only one active email/calendar provider required at MVP.
+
+### Guardrails
+
+- Approval-first rules stay identical across Gmail and Outlook.
+- Full thread context is required before drafting any Outlook reply.
+- Calendar availability must be checked live before proposing Outlook calendar slots.
+- No provider-specific credentials or tokens can be hardcoded; Microsoft secrets stay in environment variables only.
+- Outlook support must not fork the product into two workflows. Provider-specific code belongs in adapters; classification, drafting, approvals, memory, and jobs stay shared.
+
+### Acceptance Criteria
+
+- Owner can connect Microsoft 365/Outlook from Settings.
+- Inbound Outlook email can trigger classification, full-thread retrieval, draft creation, approval notification, and approved send.
+- Outlook booking request can produce live availability slots from Outlook Calendar.
+- Token refresh, disconnect, and reconnect work without losing tenant scoping.
+- Tests cover Microsoft OAuth callback, provider adapter calls, webhook verification, approval creation, send, and calendar availability failure fallback.
 
 ## New Requirement: Sent-Mail Voice Calibration
 
@@ -169,15 +219,21 @@ The calendar feature should make Olivander useful at the start of the day and du
 
 ## Next Step
 
-Immediate next build step:
+See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorities:
 
-1. Resolve Google OAuth `invalid_request`.
-2. Confirm the deployed Google redirect URI matches the Google Cloud Console value exactly.
-3. Confirm OAuth consent includes Gmail readonly, Gmail compose, Calendar events, userinfo email, and userinfo profile.
-4. Apply or verify Supabase migrations `003` through `010`.
-5. Run a real onboarding dry run against a connected Gmail account.
+**Priority 1 — MVP unblocking (infra only)**
+1. Xero setup is owner-confirmed as of 2026-05-05; if invoice E2E fails, verify Render `XERO_REDIRECT_URI` still equals `https://olivander.onrender.com/auth/xero/callback`
+2. Verify Render has `PUBSUB_TOPIC=projects/olivandertechnologies/topics/gmail-watch` and Pub/Sub push subscription points at `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>`
+3. Disconnect and reconnect Google in app Settings to activate Gmail watch
+4. End-to-end test: inbound email → approve from phone → reply sent
+5. End-to-end test: invoice creation → Xero draft → approve → invoice sent
 
-Once OAuth and dry run are working, implement sent-mail voice calibration before expanding deeper Calendar/Xero work. Calendar Command Centre should follow as the first substantial workflow feature after the email trust loop, because it ties booking requests, job dates, and daily planning together.
+**Priority 2 — Unpaid invoices panel + manual reminder**
+- `GET /api/invoices/unpaid` querying Xero live, sorted by oldest due date
+- `UnpaidInvoicesPanel` in dashboard with days-overdue colouring and per-row "Send Reminder" button
+- Manual reminder creates an approval action (owner reviews draft before anything sends)
+
+**Priority 3 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for the full list including email → lead auto-link, missed response detection, ROI outcomes dashboard, voice calibration, and calendar UI.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -243,7 +299,62 @@ Once OAuth and dry run are working, implement sent-mail voice calibration before
 6. Verification
    - Test normal slot proposal, double-booking prevention, event creation, reschedule, cancellation, and calendar API failure fallback.
 
+## Implementation Plan: Microsoft Outlook / Microsoft 365 Connection
+
+1. Provider contracts
+   - Confirm current `EmailProvider` and `CalendarProvider` interfaces cover Outlook needs.
+   - Add missing methods before writing Microsoft-specific business logic.
+
+2. Microsoft OAuth
+   - Add Microsoft app registration env vars and callback route.
+   - Store encrypted access/refresh tokens with provider metadata.
+   - Support disconnect/reconnect from Settings.
+
+3. Microsoft Graph email adapter
+   - Implement thread fetch, unread listing, send, attachment fetch, and webhook subscription.
+   - Map Graph message/thread fields into Olivander's existing internal email shape.
+
+4. Microsoft Graph calendar adapter
+   - Implement availability lookup, event listing, event create/update/delete, and webhook subscription.
+   - Keep booking actions approval-first.
+
+5. Worker integration
+   - Select the active provider by business connection.
+   - Keep classification, drafting, approval creation, memory retrieval, and job handling provider-neutral.
+
+6. Frontend
+   - Add Microsoft connection card in Settings.
+   - Show provider-specific connected state without changing the main workflow UI.
+
+7. Verification
+   - Test OAuth, webhook verification, full-thread draft flow, approved send, token refresh, disconnect/reconnect, and calendar availability fallback.
+
 ## Running Change Log
+
+### 2026-05-05
+
+- Integrated market research report (Wanaka A&P Show survey + secondary sources) into `PLATFORM_STATUS.md`.
+- Added market-validated workflows table to PLATFORM_STATUS.md: confirms invoice AR chasing and email triage are correct first wedges; identifies two missing workflows.
+- Added **Priority 2 — Unpaid Invoices Panel + Manual Reminder**: owner needs a live AR view with on-demand reminder trigger, not just the automated Day-7/14/21 chasers. Spec: `GET /api/invoices/unpaid`, `UnpaidInvoicesPanel`, per-row "Send Reminder" creates an approval action.
+- Added **Priority 4 — Missed Response Detection**: unanswered enquiries are invisible lost revenue. Spec: thread-state tracking, 2h `handle_missed_response_check` job, amber badge on dashboard.
+- Added **Priority 5 — ROI Outcomes Dashboard**: primary retention and referral driver per market research. Spec: `GET /api/outcomes/summary` (6 rolling-30-day metrics), `OutcomesPanel` with plain number display.
+- Explicitly marked out of scope for Phase 1: social media automation, Shopify, SMS, staff rostering, supplier coordination.
+- Clarified document responsibilities: PLATFORM_STATUS.md owns feature status and priorities; build_report.md owns PRD specs and implementation plans.
+- Updated CLAUDE.md and AGENTS.md: removed stale "Pending DB Migrations" section (all 001–010 confirmed applied 2026-05-01); added sync warning between the two files.
+- Owner confirmed Xero setup is complete on 2026-05-05. Docs now treat the Xero redirect/setup item as owner-confirmed, while the live invoice creation → approval → send E2E remains unverified.
+
+### 2026-05-03
+
+- Added owner-requested Microsoft Outlook/Microsoft 365 connection requirement to `Olivander_PRD_v6.docx`, `Olivander_PRD.docx`, and this report. The requirement makes Outlook a required first-class email/calendar provider because many target companies use Outlook instead of Gmail.
+- PRD updates cover product definition, architecture, email workflow, roadmap, current stack tables, and implementation guardrails.
+- Added `PUBSUB_TOPIC=projects/olivandertechnologies/topics/gmail-watch` to `render.yaml` and `backend/.env.example` so the deployed OAuth callback has the topic required to register Gmail inbox watches.
+- Confirmed live frontend uses `https://olivander.onrender.com`; `https://olivander.onrender.com/health` returned `{"status":"ok"}` and `POST /webhook/gmail` without a token returned the expected 403. `https://olivander-api.onrender.com` returned Render `no-server` 404.
+- Updated `BACKEND_ORIGIN` defaults/docs to `https://olivander.onrender.com` and added it to `render.yaml`.
+- Centralised `PUBSUB_TOPIC` in `backend/config.py` and used it from `backend/auth/google.py`.
+- Added a production startup guard requiring `PUBSUB_TOPIC` on Render/Railway so Gmail watch setup cannot silently ship disabled.
+- Added/updated OAuth security tests for the current PKCE helper signature, `/api/connections` payload, and Gmail watch registration when a topic is configured.
+- Verification: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py -q` from `backend/` passed: 7 tests on Python 3.12.
+- Remaining first-customer step: verify Render has the backend origin/topic values, update the Pub/Sub push endpoint if needed, reconnect Google, and run the real inbound-email approval test.
 
 ### 2026-05-01 (session 2)
 

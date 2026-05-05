@@ -77,6 +77,7 @@ Speak like a capable, no-nonsense operator. Natural and grounded. Never apologis
 7. **Verify before chasing.** Finance Worker queries Xero live immediately before every chaser. No caching.
 8. **Keep the build report current.** When product scope, implementation status, blockers, migrations, deployment, or next steps change, update `docs/build_report.md` using `docs/build_report_agent_rules.md`.
 9. **Maintain agent handoff.** At the start of a session read `docs/agent_handoff.md`; at the end of meaningful work, add a concise handoff entry covering what changed, verification, blockers, and next action.
+10. **Never lose context at a token limit.** Before starting any substantial task, estimate whether the remaining context is enough to finish it. If the conversation is already long or the task is large, say so before starting. If context runs low mid-task, stop at the next clean atomic boundary — do not rush or skip steps — write a full mid-task handoff to `docs/agent_handoff.md` covering exactly what is done, what is partially done, every decision made, and the precise next action. See `docs/agent_handoff.md § Mid-Task Context Handoff Protocol` for the required format.
 
 ## Architecture
 
@@ -131,18 +132,11 @@ frontend/src/
 
 ## Database (Supabase)
 
-Current tables: `businesses`, `approvals`, `memory`, `activity`, `oauth_states`
+Current tables: `businesses`, `approvals`, `memory`, `activity`, `oauth_states`, `ai_usage`, `job_queue`, `client_notes`, `leads`, `workspace_jobs`, `workspace_messages`, `workspace_actions`
 
 Row Level Security enabled on all tenant tables. All queries scoped to authenticated tenant.
 
-## Pending DB Migrations (run against Supabase)
-
-| File | Description |
-|------|-------------|
-| `backend/db/migrations/003_ai_usage.sql` | `ai_usage` table for LLM cost tracking |
-| `backend/db/migrations/004_xero_columns.sql` | Adds Xero token columns to `businesses` |
-| `backend/db/migrations/005_job_queue.sql` | `job_queue` table for background jobs and follow-up sequences |
-| `backend/db/migrations/006_client_notes.sql` | `client_notes` table for owner-added contact notes |
+**Migrations status**: All migrations `001` through `010` confirmed applied to Supabase as of 2026-05-01. See `PLATFORM_STATUS.md § Database Migrations Status` for the full table.
 
 ## Local Development
 
@@ -174,12 +168,15 @@ Required env vars on Render:
 
 ## Key Docs
 
-| File | Purpose |
-|------|---------|
-| `Olivander_PRD.docx` | Authoritative PRD v5.0 — full spec |
-| `docs/build_report.md` | Current build state, blockers, next step, and running change log |
-| `docs/build_report_agent_rules.md` | Rules for agents updating the build report |
-| `docs/agent_handoff.md` | Cross-agent handoff log for Codex, Claude, and future agents |
-| `docs/api_reference.md` | API endpoint documentation |
-| `docs/security_audit.md` | Security audit record (April 2026) |
-| `docs/testing_guide.md` | End-to-end testing checklist |
+| File | Purpose | Update when |
+|------|---------|-------------|
+| `Olivander_PRD_v6.docx` | Authoritative PRD — current product direction | Product scope changes |
+| `PLATFORM_STATUS.md` | Feature status tables, migration status, prioritised next steps | Feature lands, priority changes, migration confirmed |
+| `docs/build_report.md` | PRD-aligned specs, implementation plans, change log | New requirement scoped, implementation plan written |
+| `docs/build_report_agent_rules.md` | Rules for agents updating the build report | — |
+| `docs/agent_handoff.md` | Cross-agent handoff log (Codex ↔ Claude) | End of every meaningful session |
+| `docs/api_reference.md` | API endpoint documentation | New endpoint added |
+| `docs/security_audit.md` | Security audit record (April 2026) | — |
+| `docs/testing_guide.md` | End-to-end testing checklist | New workflow added |
+
+**IMPORTANT — file sync**: `CLAUDE.md` and `AGENTS.md` contain identical content. Codex reads `AGENTS.md`; Claude reads `CLAUDE.md`. When you edit one, edit the other in the same session.
