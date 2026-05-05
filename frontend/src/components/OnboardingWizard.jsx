@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleIcon, XeroIcon, ArrowRightIcon } from './icons.jsx';
-import { buildBackendUrl } from '../utils/api.js';
+import { buildBackendUrl, readResponseDetail } from '../utils/api.js';
 
 const STEPS = ['connect', 'chat', 'preview', 'launch'];
 const STEP_LABELS = ['Connect', 'About you', 'Preview', 'Ready'];
@@ -141,6 +141,70 @@ function DryRunProposal({ proposal }) {
   );
 }
 
+function VoiceCalibrationCard({
+  calibration,
+  draft,
+  loading,
+  error,
+  saving,
+  saved,
+  onDraftChange,
+  onSave,
+}) {
+  if (loading) {
+    return (
+      <div className="voice-calibration-card">
+        <div className="dryrun-loading">
+          <div className="dryrun-loading__dot" />
+          <span>Reading your sent mail style...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!calibration && !error) return null;
+
+  return (
+    <div className="voice-calibration-card">
+      <div className="voice-calibration-card__header">
+        <div>
+          <div className="voice-calibration-card__eyebrow">Sounds like you?</div>
+          <h4>Voice calibration</h4>
+        </div>
+        {calibration?.source_count ? (
+          <span className="dryrun-badge">{calibration.source_count} sent emails</span>
+        ) : null}
+      </div>
+
+      {error ? <p className="onboarding-section__required">{error}</p> : null}
+
+      {calibration ? (
+        <>
+          <p className="voice-calibration-card__summary">
+            {calibration.profile?.summary || 'A compact writing profile has been built from your recent sent mail.'}
+          </p>
+          <textarea
+            className="voice-calibration-card__draft"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            rows={7}
+          />
+          <div className="voice-calibration-card__actions">
+            <button
+              type="button"
+              className="connection-button is-primary"
+              onClick={onSave}
+              disabled={saving || saved || !draft.trim()}
+            >
+              {saved ? 'Saved' : saving ? 'Saving...' : 'Use this voice'}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export default function OnboardingWizard({
   onComplete,
   onSaveMemory,
@@ -166,6 +230,12 @@ export default function OnboardingWizard({
   const [dryRunLoading, setDryRunLoading] = useState(false);
   const [dryRunProposals, setDryRunProposals] = useState(null);
   const [dryRunError, setDryRunError] = useState('');
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceCalibration, setVoiceCalibration] = useState(null);
+  const [voiceDraft, setVoiceDraft] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const [voiceSaving, setVoiceSaving] = useState(false);
+  const [voiceSaved, setVoiceSaved] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -206,6 +276,10 @@ export default function OnboardingWizard({
     if (step !== 2) {
       setDryRunProposals(null);
       setDryRunError('');
+      setVoiceCalibration(null);
+      setVoiceDraft('');
+      setVoiceError('');
+      setVoiceSaved(false);
     }
   }, [step]);
 
@@ -242,6 +316,46 @@ export default function OnboardingWizard({
         setDryRunProposals([]);
       })
       .finally(() => { clearTimeout(timeout); setDryRunLoading(false); });
+
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [step, authToken]);
+
+  useEffect(() => {
+    if (step !== 2 || !authToken) return;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    setVoiceLoading(true);
+    setVoiceError('');
+    setVoiceCalibration(null);
+    setVoiceDraft('');
+    setVoiceSaved(false);
+
+    fetch(buildBackendUrl('/api/onboarding/voice-calibration'), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await readResponseDetail(response, `Failed with status ${response.status}`));
+        return response.json();
+      })
+      .then((data) => {
+        setVoiceCalibration(data);
+        setVoiceDraft(data?.example_draft || '');
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          setVoiceError('Voice calibration timed out. You can still continue.');
+        } else {
+          setVoiceError(err?.message || 'Could not calibrate your voice. You can still continue.');
+        }
+      })
+      .finally(() => { clearTimeout(timeout); setVoiceLoading(false); });
 
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [step, authToken]);
@@ -306,8 +420,32 @@ export default function OnboardingWizard({
   function canProceed() {
     if (step === 0) return googleConnected;
     if (step === 1) return chatComplete;
-    if (step === 2) return !dryRunLoading;
+    if (step === 2) return !dryRunLoading && !voiceLoading;
     return true;
+  }
+
+  async function handleSaveVoiceCalibration() {
+    if (!voiceCalibration || !onSaveMemory || voiceSaving || !voiceDraft.trim()) return;
+    setVoiceSaving(true);
+    setVoiceError('');
+    try {
+      const reviewedProfile = {
+        ...(voiceCalibration.profile || {}),
+        owner_reviewed: true,
+      };
+      const example = {
+        scenario: voiceCalibration.scenario || null,
+        draft: voiceDraft.trim(),
+        accepted_at: new Date().toISOString(),
+      };
+      await onSaveMemory('owner_voice_profile', JSON.stringify(reviewedProfile));
+      await onSaveMemory('owner_voice_examples', JSON.stringify([example]));
+      setVoiceSaved(true);
+    } catch {
+      setVoiceError('Could not save this voice example.');
+    } finally {
+      setVoiceSaving(false);
+    }
   }
 
   async function handleNext() {
@@ -496,6 +634,17 @@ export default function OnboardingWizard({
               {!dryRunLoading && dryRunProposals?.map((p, i) => (
                 <DryRunProposal key={i} proposal={p} />
               ))}
+
+              <VoiceCalibrationCard
+                calibration={voiceCalibration}
+                draft={voiceDraft}
+                loading={voiceLoading}
+                error={voiceError}
+                saving={voiceSaving}
+                saved={voiceSaved}
+                onDraftChange={(value) => { setVoiceDraft(value); setVoiceSaved(false); }}
+                onSave={() => void handleSaveVoiceCalibration()}
+              />
             </div>
           )}
 

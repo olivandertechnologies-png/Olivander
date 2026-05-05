@@ -1,5 +1,5 @@
 # Olivander Platform Status
-*Last updated: 2026-05-05 — unpaid invoices, email-to-lead, missed-response detection, and ROI outcomes dashboard built in code*
+*Last updated: 2026-05-05 — unpaid invoices, email-to-lead, missed-response detection, ROI outcomes, and sent-mail voice calibration built in code*
 
 ---
 
@@ -18,7 +18,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ✅ Built in code; live Gmail E2E unverified |
 | Missed response detection | Surfaces emails that arrived but were never replied to | ✅ Built in code; live Gmail E2E unverified |
 | ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ✅ Built in code; live data E2E unverified |
-| Voice calibration | Draft quality must sound like the owner or trust collapses | ❌ Missing |
+| Voice calibration | Draft quality must sound like the owner or trust collapses | ✅ Built in code; live sent-mail E2E unverified |
 
 **Explicitly out of scope for Phase 1:** social media automation, Shopify integration, Microsoft Outlook/365, staff rostering, supplier coordination, SMS channel. Focus only on the workflows above.
 
@@ -41,7 +41,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | RAG | **Partial** | `agent/rag.py` — keyword priority retrieval; pgvector not wired |
 | Onboarding wizard | **Done** | `OnboardingWizard.jsx` — 4 steps; dry run at step 3 |
 | Workspace (first customer) | **Done** | `api/workspace.py` + `010_first_customer_workspace.sql` |
-| Sent-mail voice calibration | **Spec only** | `docs/build_report.md` — no code written |
+| Sent-mail voice calibration | **Code complete; live E2E unverified** | `agent/voice.py`, `POST /api/onboarding/voice-calibration`, onboarding editable voice card, draft prompt injection |
 | Calendar Command Centre | **Spec only** | Spec in `docs/build_report.md` — no dedicated UI |
 
 ---
@@ -139,7 +139,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | RAG keyword retrieval (classification-aware) | ✅ Done | `agent/rag.py` |
 | pgvector semantic retrieval | ❌ Not wired | `agent/rag.py` is keyword-only; no embedding model configured |
 | Edit learning → memory promotion | ✅ Done | `agent/learning.py` — SequenceMatcher + AI pattern extraction |
-| Sent-mail voice calibration | ❌ Not built | Spec written; `agent/voice.py` does not exist |
+| Sent-mail voice calibration | ✅ Built in code | `agent/voice.py`; extracts compact profile from recent sent mail and stores memory keys |
 
 ### Onboarding & Memory
 
@@ -150,7 +150,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Memory KV store | ✅ Done | `db/supabase.py:get_memory_profile() / set_memory_value()` |
 | Memory provenance chips | ✅ Done | `ApprovalCard.jsx` — retrieved_context |
 | Memory edit UI | ✅ Done | `MemoryPanel.jsx` |
-| Sent-mail voice calibration onboarding step | ❌ Not built | No UI, no API endpoint |
+| Sent-mail voice calibration onboarding step | ✅ Built in code | `POST /api/onboarding/voice-calibration` + editable "Sounds like you?" onboarding card |
 
 ### Workspace (First Customer)
 
@@ -224,7 +224,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Embedding model | §3.3 "RAG retrieval: pgvector 768-dim + Groq" | No embedding API; no vector column on memory |
 | Tier 2 auto-send countdown | §5.1 "2-hour window, sends if not rejected" | Not implemented |
 | Trust progression prompts | §5.3 "suggest tier promotion after 10 consec." | Not implemented |
-| Sent-mail voice calibration | PRD / build_report §3 | Spec only — no code |
+| Sent-mail voice calibration | PRD / build_report §3 | Built in code; live sent-mail E2E unverified |
 | Calendar Command Centre | build_report §4 | Backend client exists; no dedicated UI |
 | Email → lead auto-link | §7.3 | Built in code; live Gmail E2E unverified |
 | Workspace ↔ approvals integration | Implied by first-customer spec | Tables are isolated |
@@ -300,15 +300,15 @@ Market research: the product sells on "admin hours saved, emails followed up, in
     - *Files*: `components/OutcomesPanel.jsx`, `DashboardApp.jsx`, `TodayPanel.jsx`, `dashboard.css`
 15. **Activity / state counts ✅ DONE** — Counts are derived from existing `approvals`, `job_queue`, and `lead_pipeline` records. No migration or new tracking columns required.
 
-### Priority 6 — Sent-Mail Voice Calibration
+### Priority 6 — Sent-Mail Voice Calibration ✅ CODE COMPLETE
 
 Draft quality must sound like the owner. Trust collapses if recipients notice a different tone.
 
-16. **Implement `agent/voice.py`** — Scan last 50 sent emails, extract style profile via Groq
-17. **Add `POST /api/onboarding/voice-calibration`** — Returns profile + example draft
-18. **Extend OnboardingWizard step 3** — "Sounds like you?" card with editable example
-19. **Inject `owner_voice_profile` into `draft_reply()`** — Load in `get_business_context`
-20. **Store profile in memory** — Keys: `owner_voice_profile`, `owner_voice_calibrated_at`, `owner_voice_source_count`
+16. **Implement `agent/voice.py` ✅ DONE** — Scans up to 50 recent sent emails, filters poor samples, and extracts a compact style profile via Groq.
+17. **Add `POST /api/onboarding/voice-calibration` ✅ DONE** — Returns profile, example draft, scenario, source count, confidence, and stores compact memory.
+18. **Extend OnboardingWizard step 3 ✅ DONE** — Adds "Sounds like you?" card with editable example draft and save-to-memory action.
+19. **Inject `owner_voice_profile` into `draft_reply()` ✅ DONE** — `get_business_context()` loads voice memory; `draft_reply()` applies it as baseline style.
+20. **Store profile in memory ✅ DONE** — Keys: `owner_voice_profile`, `owner_voice_examples`, `owner_voice_calibrated_at`, `owner_voice_source_count`
     - *Full spec*: `docs/build_report.md §Sent-Mail Voice Calibration`
 
 ### Priority 7 — Calendar Command Centre UI

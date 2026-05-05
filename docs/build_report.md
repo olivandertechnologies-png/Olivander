@@ -1,6 +1,6 @@
 # Olivander Build Report
 
-Last updated: 2026-05-03, Pacific/Auckland
+Last updated: 2026-05-05, Pacific/Auckland
 
 This is the working build report for Olivander. Keep it current when product scope changes, when a meaningful implementation change lands, or when a blocker is resolved. Agents maintaining this file must follow `docs/build_report_agent_rules.md` and leave session continuity notes in `docs/agent_handoff.md`.
 
@@ -150,7 +150,7 @@ This should make the first dry run feel like "this sounds like me" instead of "t
 - Store the durable output as a compact style profile, source count, timestamp, and any owner-approved exemplar.
 - Show the owner what was learned in Memory and allow deletion or recalibration.
 - If the sent-mail sample is too weak, ask the owner to paste or approve a good example instead of guessing.
-- Privacy copy must be updated before release because current policy describes inbound drafting but not sent-mail voice calibration.
+- Privacy copy now mentions bounded sent-mail voice calibration and raw sent-mail retention behavior.
 
 ### Suggested Memory Keys
 
@@ -249,10 +249,14 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Today dashboard now includes `OutcomesPanel` with the six plain-number metrics and the required 30-day headline.
 - Counts are derived from existing approvals/jobs/leads; no migration or new tracking columns required.
 
-**Next code build: Priority 6 — Sent-Mail Voice Calibration**
-- Add owner sent-mail style analysis and persist the voice profile in memory.
-- Feed the owner voice profile into draft generation.
-- Live Gmail/Xero E2E checks remain the operational priority before first customer use.
+**Priority 6 — Sent-Mail Voice Calibration ✅ code complete**
+- `POST /api/onboarding/voice-calibration` reads recent sent mail, extracts a compact owner voice profile, and stores memory keys.
+- Onboarding preview now includes an editable "Sounds like you?" example draft and saves the accepted example into memory.
+- `draft_reply()` now applies `owner_voice_profile` as baseline style before classification-specific learned tone overrides.
+
+**Next code build: Priority 7 — Calendar Command Centre UI**
+- Add visible calendar context to Today and booking approvals.
+- Live Gmail/Xero/voice calibration E2E checks remain the operational priority before first customer use.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -365,6 +369,7 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Built **Priority 3 — Email → Lead Auto-Link** in code: new-lead Gmail webhook processing now creates or links `lead_pipeline` rows, dedups by thread/email, links approval IDs, refreshes dashboard lead count during inbox polling, and routes the "New leads" metric to the Leads panel. Verification: backend lead/security/invoice tests passed; frontend production build passed.
 - Built **Priority 4 — Missed Response Detection** in code: actionable inbound Gmail processing queues delayed missed-response checks, job handler creates non-sending `missed_response` approval cards when the original approval remains unhandled, and dashboard/email-tap approvals can mark those cards handled without sending. Verification: backend missed-response/lead/invoice/security tests passed; frontend production build passed.
 - Built **Priority 5 — ROI Outcomes Dashboard** in code: added `GET /api/outcomes/summary`, pure 30-day outcome counting from approvals/jobs/leads, and a compact Today-panel `OutcomesPanel` with the six required metrics. Verification: backend outcomes/missed-response/lead/invoice/security tests passed; frontend production build passed.
+- Built **Priority 6 — Sent-Mail Voice Calibration** in code: added sent-mail Gmail helper, `agent/voice.py`, `POST /api/onboarding/voice-calibration`, onboarding editable voice card, privacy copy updates, memory keys, and draft prompt injection. Verification: backend voice/outcomes/missed-response/lead/invoice/security tests passed; frontend production build passed.
 
 ### 2026-05-03
 

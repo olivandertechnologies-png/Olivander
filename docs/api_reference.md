@@ -158,6 +158,50 @@ Counts are derived from existing approvals, completed job queue records, and aut
 
 ---
 
+## Onboarding
+
+### Voice Calibration
+```
+POST /api/onboarding/voice-calibration
+```
+
+Reads recent owner-sent Gmail messages, extracts a compact writing profile, stores the profile memory keys, and returns an editable example draft. Raw sent emails are not stored.
+
+**Response:**
+```json
+{
+  "profile": {
+    "summary": "Short, direct, warm replies.",
+    "greeting_style": "Uses Hi plus first name.",
+    "sign_off_style": "Thanks plus business name.",
+    "typical_length": "Two or three sentences.",
+    "formality": "Professional but plain.",
+    "directness": "Gets to the next step quickly.",
+    "local_phrasing": "New Zealand English.",
+    "cta_style": "Asks one clear question.",
+    "avoid": ["Corporate filler"],
+    "confidence": "medium"
+  },
+  "scenario": {
+    "classification": "new_lead",
+    "subject": "Heat pump quote",
+    "body": "Can you quote a heat pump install?"
+  },
+  "example_draft": "Hi Sam, thanks for getting in touch...",
+  "source_count": 8,
+  "confidence": "medium",
+  "calibrated_at": "2026-05-05T10:00:00+00:00"
+}
+```
+
+**Status codes:**
+- `200` - Voice profile created and stored
+- `401` - Google is not connected
+- `422` - Not enough sent emails to calibrate voice
+- `502` - Gmail or AI calibration failed
+
+---
+
 ## Invoices
 
 ### List Unpaid Xero Invoices

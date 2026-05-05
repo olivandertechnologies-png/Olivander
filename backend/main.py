@@ -17,6 +17,7 @@ from agent.classify import classify_email
 from agent.draft import draft_reply, generate_agent_plan
 from agent.execution_plan import build_execution_plan
 from agent.rag import retrieve_context_chunks
+from agent.voice import calibrate_owner_voice, profile_to_memory_value
 from config import FRONTEND_ORIGIN as _FRONTEND_ORIGIN
 from config import get_secret
 from api.actions import router as actions_router
@@ -42,7 +43,7 @@ from db.supabase import (
     verify_supabase_connection,
 )
 from gmail.client import get_message as gmail_get_message
-from gmail.client import list_recent_messages, send_message
+from gmail.client import list_recent_messages, list_sent_messages, send_message
 from gmail.webhook import router as gmail_webhook_router
 from jobs.queue import job_runner
 from rate_limit import limiter
@@ -175,6 +176,10 @@ def get_business_context(business_id: str) -> dict[str, Any]:
         "gst_registered": memory.get("gst_registered") or "",
         "reply_tone": memory.get("reply_tone") or "",
         "reply_tone_edits": memory.get("reply_tone_edits") or "0",
+        "owner_voice_profile": memory.get("owner_voice_profile") or "",
+        "owner_voice_examples": memory.get("owner_voice_examples") or "",
+        "owner_voice_calibrated_at": memory.get("owner_voice_calibrated_at") or "",
+        "owner_voice_source_count": memory.get("owner_voice_source_count") or "0",
         "reschedule_policy": memory.get("reschedule_policy") or "",
         "no_show_handling": memory.get("no_show_handling") or "",
         "tone": memory.get("reply_tone") or memory.get("tone") or "",
@@ -539,6 +544,62 @@ async def onboarding_dry_run(
         return proposals
 
     return await asyncio.get_running_loop().run_in_executor(None, _run_dry_run)
+
+
+@app.post("/api/onboarding/voice-calibration")
+@limiter.limit("10/minute")
+async def onboarding_voice_calibration(
+    request: Request,
+    business_id: str = Depends(get_current_business),
+) -> dict[str, Any]:
+    """Analyse recent sent mail and store a compact owner voice profile."""
+    import asyncio
+
+    def _run_calibration() -> dict[str, Any]:
+        try:
+            access_token = get_valid_token(business_id)
+            sent_messages = list_sent_messages(access_token, max_results=50)
+        except HTTPException:
+            raise
+        except Exception as err:
+            logger.warning("Voice calibration: could not fetch sent mail for %s: %s", business_id, err)
+            raise HTTPException(status_code=502, detail="Could not read your sent mail. Check that Gmail is connected.")
+
+        context = get_business_context(business_id)
+        try:
+            result = calibrate_owner_voice(
+                sent_messages,
+                context,
+                business_id=business_id,
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail=str(err)) from err
+        except Exception as err:
+            logger.warning("Voice calibration failed for %s: %s", business_id, err)
+            raise HTTPException(status_code=502, detail="Could not calibrate voice from sent mail.") from err
+
+        calibrated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        set_memory_value(
+            business_id,
+            "owner_voice_profile",
+            profile_to_memory_value(result["profile"]),
+            source="system",
+        )
+        set_memory_value(
+            business_id,
+            "owner_voice_calibrated_at",
+            calibrated_at,
+            source="system",
+        )
+        set_memory_value(
+            business_id,
+            "owner_voice_source_count",
+            str(result["source_count"]),
+            source="system",
+        )
+        return {**result, "calibrated_at": calibrated_at}
+
+    return await asyncio.get_running_loop().run_in_executor(None, _run_calibration)
 
 
 @app.get("/health", include_in_schema=False)

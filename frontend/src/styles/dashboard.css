@@ -4238,3 +4238,60 @@ textarea::placeholder {
   white-space: pre-wrap;
   line-height: 1.55;
 }
+
+.voice-calibration-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.voice-calibration-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.voice-calibration-card__eyebrow {
+  color: var(--act);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.voice-calibration-card h4 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.voice-calibration-card__summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.voice-calibration-card__draft {
+  width: 100%;
+  min-height: 128px;
+  padding: 10px;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.voice-calibration-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -51,6 +51,46 @@ _DEFAULT_INSTRUCTION = (
 )
 
 
+def _format_owner_voice_profile(raw_profile: Any) -> str:
+    """Format the saved owner voice profile for the drafting prompt."""
+    if not raw_profile:
+        return ""
+    profile: dict[str, Any]
+    if isinstance(raw_profile, dict):
+        profile = raw_profile
+    else:
+        try:
+            parsed = json.loads(str(raw_profile))
+            profile = parsed if isinstance(parsed, dict) else {}
+        except (TypeError, json.JSONDecodeError):
+            profile = {"summary": str(raw_profile)}
+
+    lines = []
+    for key, label in [
+        ("summary", "Summary"),
+        ("greeting_style", "Greeting"),
+        ("sign_off_style", "Sign-off"),
+        ("typical_length", "Length"),
+        ("formality", "Formality"),
+        ("directness", "Directness"),
+        ("local_phrasing", "Local phrasing"),
+        ("cta_style", "Next-step style"),
+    ]:
+        value = str(profile.get(key) or "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+
+    avoid = profile.get("avoid")
+    if isinstance(avoid, list):
+        avoid_text = "; ".join(str(item).strip() for item in avoid if str(item).strip())
+        if avoid_text:
+            lines.append(f"- Avoid: {avoid_text}")
+
+    if not lines:
+        return ""
+    return "\nOwner voice profile (baseline style, do not invent facts from it):\n" + "\n".join(lines) + "\n"
+
+
 def draft_reply(
     subject: str,
     body: str,
@@ -126,6 +166,7 @@ def draft_reply(
         if learned_instruction
         else ""
     )
+    owner_voice_section = _format_owner_voice_profile(business_context.get("owner_voice_profile"))
 
     thread_section = (
         f"\nFull conversation thread (oldest first):\n{thread_context}\n"
@@ -144,7 +185,7 @@ You are drafting a reply on behalf of {business_name}, a {business_type} in New 
 Tone: {tone}. Human, warm, and direct. Use New Zealand English.
 Never start with "I hope this email finds you well" or similar filler.
 {greeting_instruction}
-Sign off as: {business_name}{learned_section}
+Sign off as: {business_name}{owner_voice_section}{learned_section}
 Email you are replying to:
 From: {sender}
 Subject: {subject}

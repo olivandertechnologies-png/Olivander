@@ -113,6 +113,18 @@ def list_recent_messages(
     return [get_message(access_token, message["id"]) for message in message_refs if message.get("id")]
 
 
+def list_sent_messages(
+    access_token: str,
+    max_results: int = 50,
+) -> list[dict[str, Any]]:
+    """Return recent owner-sent Gmail messages for voice calibration."""
+    return list_recent_messages(
+        access_token,
+        max_results=max_results,
+        label_ids=["SENT"],
+    )
+
+
 def get_thread(access_token: str, thread_id: str) -> list[dict[str, Any]]:
     """Get all messages in a thread with full body text.
 
