@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: Priority 2 unpaid-invoices work was committed and pushed as `b19b98e`. Working tree now has local Priority 3 email-to-lead auto-link changes pending commit.
+- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`. Working tree now has local Priority 4 missed-response detection changes pending commit.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -135,13 +135,61 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
   1. MVP infra: Gmail Pub/Sub verification + live Gmail/Xero E2E tests. Xero setup is owner-confirmed.
   2. Unpaid invoices panel + manual reminder is code-complete; live Xero E2E still unverified.
   3. Email → lead auto-link is code-complete; live Gmail E2E still unverified.
-  4. Missed response detection is the next code build.
-  5. ROI outcomes dashboard (new feature — not yet built)
+  4. Missed response detection is code-complete; live Gmail E2E still unverified.
+  5. ROI outcomes dashboard is the next code build.
   6. Voice calibration → Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
 - **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
 ## Rolling Handoff Log
+
+### 2026-05-05 - Codex - Missed Response Detection
+
+User request:
+
+- Keep going until the overall build is closer to done.
+
+Work completed:
+
+- Added delayed missed-response checks after actionable inbound Gmail processing. Each non-skipped inbound email queues a `missed_response_check` job for 4 hours later.
+- Added `jobs/handlers.py:handle_missed_response_check`: skips if the original approval was approved/rejected/failed, dedups existing missed-response cards, and otherwise creates a non-sending `missed_response` approval.
+- Added Supabase helpers for original-email approval lookup, stable missed-response source IDs, and pending missed-response dedup.
+- Updated dashboard approval cards so missed-response cards use "Action", "Mark handled", and "Dismiss" labels.
+- Updated dashboard and email-tap approval paths so approving a missed-response card marks it handled without sending an email.
+- Fixed invoice chaser import placement so `invoice_source_id()` and `pending_invoice_reminder_approval_exists()` are imported in the chaser handler that uses them.
+- Updated `PLATFORM_STATUS.md`, `docs/build_report.md`, `docs/api_reference.md`, and this handoff.
+
+Files changed:
+
+- `backend/api/actions.py`
+- `backend/api/email_actions.py`
+- `backend/db/supabase.py`
+- `backend/gmail/webhook.py`
+- `backend/jobs/handlers.py`
+- `backend/main.py`
+- `backend/tests/test_lead_auto_link.py`
+- `backend/tests/test_missed_response.py`
+- `frontend/src/components/ApprovalCard.jsx`
+- `frontend/src/utils/task.js`
+- `PLATFORM_STATUS.md`
+- `docs/api_reference.md`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py tests/test_invoices.py tests/test_lead_auto_link.py tests/test_missed_response.py -q` from `backend/` (15 tests).
+- Passed: `npm run build` from `frontend/`.
+
+Known blockers or risks:
+
+- Live missed-response behavior still depends on Gmail Pub/Sub watch activation and live inbound-email processing.
+- Missed-response detection currently uses delayed approval/job state checks rather than a dedicated thread-state table; this avoids a new migration but should be revisited if richer thread analytics are needed.
+- Live Xero invoice reminder E2E remains unverified.
+
+Exact next recommended action:
+
+- Commit and push Priority 4, then build Priority 5 ROI Outcomes Dashboard unless the owner pauses for live Gmail/Xero E2E testing.
 
 ### 2026-05-05 - Codex - Email To Lead Auto-Link
 

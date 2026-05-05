@@ -199,6 +199,47 @@ def approval_exists_for_message(business_id: str, gmail_message_id: str) -> bool
     return bool(response.data)
 
 
+def missed_response_source_id(gmail_message_id: str) -> str:
+    """Stable source ID for a missed-response action tied to an email."""
+    return f"missed_response:{gmail_message_id}"
+
+
+def get_approval_for_original_email(
+    business_id: str,
+    gmail_message_id: str,
+) -> dict[str, Any] | None:
+    """Return the latest approval linked to an original Gmail message."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .select("*")
+        .eq("business_id", business_id)
+        .eq("original_email_id", gmail_message_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return _normalise_row(response.data)
+
+
+def pending_missed_response_approval_exists(
+    business_id: str,
+    gmail_message_id: str,
+) -> bool:
+    """Return True if a missed-response action is already pending."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .select("id")
+        .eq("business_id", business_id)
+        .eq("status", "pending")
+        .eq("original_email_id", missed_response_source_id(gmail_message_id))
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
+
+
 def invoice_source_id(invoice_id: str) -> str:
     """Stable source ID for approval deduplication around a Xero invoice."""
     return f"xero_invoice:{invoice_id}"

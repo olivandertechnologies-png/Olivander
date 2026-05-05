@@ -128,6 +128,19 @@ async def handle_email_action(request: Request, token: str = "") -> HTMLResponse
         )
 
     if action == "approve":
+        if approval.get("type") == "missed_response":
+            log_activity(
+                business_id,
+                "Missed response marked handled via email tap",
+                activity_type="missed_response_handled",
+                metadata={"approval_id": approval_id, "via": "email_tap"},
+            )
+            return _html_page(
+                "Marked handled",
+                "This missed response has been marked handled. No email was sent.",
+                "#2E7D52",
+            )
+
         try:
             access_token = get_valid_token(business_id)
             original_email_id = approval.get("original_email_id")

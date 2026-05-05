@@ -135,6 +135,7 @@ def test_gmail_new_lead_processing_creates_or_links_pipeline_lead(monkeypatch) -
     monkeypatch.setattr(gmail_webhook, "create_approval", lambda **kwargs: {"id": "approval-123"})
     monkeypatch.setattr(gmail_webhook, "log_activity", lambda *args, **kwargs: None)
     monkeypatch.setattr(gmail_webhook, "send_approval_notification", lambda **kwargs: None)
+    monkeypatch.setattr(gmail_webhook, "_enqueue_missed_response_check", lambda **kwargs: None)
     monkeypatch.setattr(gmail_webhook, "_enqueue_new_lead_follow_ups", lambda **kwargs: None)
 
     def fake_create_or_link_lead(business_id: str, **kwargs):

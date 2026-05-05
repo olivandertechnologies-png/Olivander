@@ -139,9 +139,7 @@ def handle_follow_up_email(job: dict[str, Any]) -> None:
         create_approval,
         get_business_by_id,
         get_memory_profile,
-        invoice_source_id,
         log_activity,
-        pending_invoice_reminder_approval_exists,
     )
 
     payload = job.get("payload") or {}
@@ -297,7 +295,9 @@ def handle_chase_invoice(job: dict[str, Any]) -> None:
         create_approval,
         get_business_by_id,
         get_memory_profile,
+        invoice_source_id,
         log_activity,
+        pending_invoice_reminder_approval_exists,
     )
     from xero.client import get_invoice
 
@@ -512,6 +512,97 @@ Write the email body only. No subject line. No headers.""".strip()
 
 
 # ---------------------------------------------------------------------------
+# missed_response_check
+# ---------------------------------------------------------------------------
+# Payload: {
+#   "business_id": str,
+#   "original_email_id": str,
+#   "thread_id": str,
+#   "sender_name": str,
+#   "sender_email": str,
+#   "subject": str,
+#   "original_body": str,
+#   "classification": str,
+# }
+
+def handle_missed_response_check(job: dict[str, Any]) -> None:
+    from db.supabase import (
+        create_approval,
+        get_approval_for_original_email,
+        log_activity,
+        missed_response_source_id,
+        pending_missed_response_approval_exists,
+    )
+
+    payload = job.get("payload") or {}
+    business_id = str(payload.get("business_id") or "")
+    original_email_id = str(payload.get("original_email_id") or "")
+    sender_name = str(payload.get("sender_name") or "")
+    sender_email = str(payload.get("sender_email") or "")
+    subject = str(payload.get("subject") or "Customer email")
+    original_body = str(payload.get("original_body") or "")
+    classification = str(payload.get("classification") or "email")
+
+    if not business_id or not original_email_id:
+        logger.warning("missed_response_check job %s missing required fields — skipping", job.get("id"))
+        return
+
+    original_approval = get_approval_for_original_email(business_id, original_email_id)
+    original_status = str((original_approval or {}).get("status") or "").lower()
+    if original_status in {"approved", "rejected", "failed"}:
+        logger.info(
+            "missed_response_check: original email %s already handled with status=%s",
+            original_email_id,
+            original_status,
+        )
+        return
+
+    if pending_missed_response_approval_exists(business_id, original_email_id):
+        logger.info(
+            "missed_response_check: missed-response approval already pending for %s",
+            original_email_id,
+        )
+        return
+
+    who = f"{sender_name} <{sender_email}>" if sender_name and sender_email else sender_email or sender_name
+    source_id = missed_response_source_id(original_email_id)
+    detail = (
+        "This inbound email has not had an approved reply after four hours. "
+        "Review the original pending draft, write a reply, or mark this handled if it was dealt with outside Olivander."
+    )
+    if original_body:
+        detail = f"{detail}\n\nOriginal message:\n{original_body[:500]}"
+
+    approval = create_approval(
+        business_id=business_id,
+        approval_type="missed_response",
+        who=who,
+        what=f"Missed response - {subject}",
+        why=f"No approved reply recorded for this {classification} thread after four hours.",
+        original_email_id=source_id,
+        draft_content=detail,
+    )
+
+    if approval:
+        log_activity(
+            business_id,
+            f"Missed response flagged: {subject}",
+            activity_type="missed_response_flagged",
+            metadata={
+                "approval_id": approval.get("id"),
+                "original_email_id": original_email_id,
+                "classification": classification,
+            },
+        )
+
+    logger.info(
+        "missed_response_check complete: business=%s original_email=%s",
+        business_id,
+        original_email_id,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dispatch table
 # ---------------------------------------------------------------------------
 
@@ -520,4 +611,5 @@ HANDLERS: dict[str, Any] = {
     "renew_gmail_watch": handle_renew_gmail_watch,
     "chase_invoice": handle_chase_invoice,
     "calendar_reminder": handle_calendar_reminder,
+    "missed_response_check": handle_missed_response_check,
 }

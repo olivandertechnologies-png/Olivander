@@ -118,6 +118,20 @@ async def approve_action(
 
         approval_type = approval.get("type") or "email_reply"
 
+        # ── Missed response flag — mark handled, do not send anything ───────
+        if approval_type == "missed_response":
+            _safe_log_activity(
+                business_id,
+                "Missed response marked handled",
+                activity_type="missed_response_handled",
+                metadata={"approval_id": approval_id},
+            )
+            return {
+                "status": "approved",
+                "approval_id": approval_id,
+                "handled_at": now,
+            }
+
         # ── Xero invoice — does not need Google token ───────────────────────
         if approval_type == "xero_invoice":
             from auth.xero import get_valid_xero_token

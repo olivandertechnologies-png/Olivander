@@ -59,6 +59,7 @@ function ContextUsed({ chunks }) {
 export default function ApprovalCard({ approval, isRemoving, onApprove, onReject, onSaveEdit }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(approval.agentResponse);
+  const isMissedResponse = approval.type === 'missed_response';
 
   useEffect(() => {
     setIsEditing(false);
@@ -92,7 +93,7 @@ export default function ApprovalCard({ approval, isRemoving, onApprove, onReject
         <ExecutionPlan plan={approval.executionPlan} />
         <ContextUsed chunks={approval.retrievedContext} />
 
-        <div className="approval-card__response-label">Draft</div>
+        <div className="approval-card__response-label">{isMissedResponse ? 'Action' : 'Draft'}</div>
         {isEditing ? (
           <textarea
             className="approval-card__textarea"
@@ -110,28 +111,30 @@ export default function ApprovalCard({ approval, isRemoving, onApprove, onReject
             className="approval-action approval-action--approve"
             onClick={() => onApprove(approval)}
           >
-            Approve
+            {isMissedResponse ? 'Mark handled' : 'Approve'}
           </button>
-          <button
-            type="button"
-            className="approval-action approval-action--edit"
-            onClick={() => {
-              if (isEditing) {
-                onSaveEdit(approval, draftText);
-                setIsEditing(false);
-                return;
-              }
-              setIsEditing(true);
-            }}
-          >
-            {isEditing ? 'Save' : 'Edit'}
-          </button>
+          {!isMissedResponse ? (
+            <button
+              type="button"
+              className="approval-action approval-action--edit"
+              onClick={() => {
+                if (isEditing) {
+                  onSaveEdit(approval, draftText);
+                  setIsEditing(false);
+                  return;
+                }
+                setIsEditing(true);
+              }}
+            >
+              {isEditing ? 'Save' : 'Edit'}
+            </button>
+          ) : null}
           <button
             type="button"
             className="approval-action approval-action--reject"
             onClick={() => onReject(approval)}
           >
-            Reject
+            {isMissedResponse ? 'Dismiss' : 'Reject'}
           </button>
         </div>
       </div>

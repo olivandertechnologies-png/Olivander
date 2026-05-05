@@ -405,6 +405,7 @@ def _normalise_approval_row(row: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "id": str(row.get("id", "")),
+        "type": row.get("type") or "email_reply",
         "senderName": sender_name or "Unknown sender",
         "senderEmail": sender_email or "unknown@example.com",
         "subject": row.get("what") or "Untitled",

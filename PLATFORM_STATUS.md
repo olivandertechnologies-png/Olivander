@@ -1,5 +1,5 @@
 # Olivander Platform Status
-*Last updated: 2026-05-05 — unpaid invoices panel and email-to-lead auto-link built; Xero setup owner-confirmed*
+*Last updated: 2026-05-05 — unpaid invoices, email-to-lead, and missed-response detection built in code*
 
 ---
 
@@ -16,7 +16,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Email triage & draft reply | Core time sink; trust-building feature | ✅ Built |
 | Booking / scheduling automation | Frequent pain for trades, tourism, professional services | ✅ Backend built; UI partial |
 | Email → lead auto-link | Closes loop between inbound enquiry and pipeline | ✅ Built in code; live Gmail E2E unverified |
-| Missed response detection | Surfaces emails that arrived but were never replied to | ❌ Missing |
+| Missed response detection | Surfaces emails that arrived but were never replied to | ✅ Built in code; live Gmail E2E unverified |
 | ROI outcomes dashboard | Proves value (hours saved, invoices chased, follow-ups sent) — drives referrals and retention | ❌ Missing |
 | Voice calibration | Draft quality must sound like the owner or trust collapses | ❌ Missing |
 
@@ -202,11 +202,11 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 1. **Google OAuth `invalid_request`** — ✅ RESOLVED 2026-05-01.
 2. **DB migrations unconfirmed** — ✅ RESOLVED 2026-05-01. All 001–010 confirmed applied.
 3. **Xero setup** — ✅ Owner-confirmed 2026-05-05. Live invoice approval/send test still required.
-4. **No missed response detection** — Emails that arrive and receive no reply are invisible. No thread-state tracking exists; unanswered enquiries are silently lost.
+4. **Missed response detection** — ✅ Built in code using delayed job checks against approval state. Live Gmail E2E still required.
 5. **No ROI outcomes panel** — There is no way for the owner to see what Olivander has done for them. Without this, there is no proof of value, no referral story, and no retention anchor.
 6. **pgvector not wired** — `agent/rag.py` uses keyword priority only; semantic retrieval requires an embedding model (not Groq — needs OpenAI or sentence-transformers) and `embedding vector(768)` column on memory.
 7. **Workspace ↔ approvals gap** — `workspace_jobs/messages/actions` are isolated tables; no FK links to approvals. Actions created by the approval flow don't appear in the workspace.
-8. **No email → lead auto-link** — Inbound leads are classified and approved, but not auto-created as leads in the pipeline. Manual entry required.
+8. **Email → lead auto-link** — ✅ Built in code. Live Gmail E2E still required.
 9. **DashboardApp.jsx is a 900-line monolith** — No state management library; all state in component refs/timers. Works, but will become painful at next scale.
 10. **Real-time via polling only** — 30s email sync and 30s job queue. No WebSocket; no push. Good for MVP, not for multi-tenant.
 11. **Quote PDF styling** — Inline CSS only; no template system. Hard to brand-customise.
@@ -218,7 +218,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 
 | Gap | PRD requirement | Current state |
 |-----|-----------------|---------------|
-| Missed response detection | Market research: "missed follow-ups reduced" is core ROI metric | No thread-state tracking; unanswered emails are invisible |
+| Missed response detection | Market research: "missed follow-ups reduced" is core ROI metric | Built using delayed approval/job state checks; live Gmail E2E unverified |
 | ROI outcomes dashboard | Market research: primary sales and retention proof point | No outcomes panel; owner cannot see what Olivander has done |
 | pgvector semantic retrieval | §7.1 "pgvector query: top-3 chunks per query" | Keyword priority fallback only |
 | Embedding model | §3.3 "RAG retrieval: pgvector 768-dim + Groq" | No embedding API; no vector column on memory |
@@ -273,16 +273,15 @@ The automated Day-7/14/21 chasers work invisibly. The owner now has a dashboard 
    - Dashboard lead count refreshes during inbox polling and the "New leads" metric now opens the Leads panel.
    - *Files*: `gmail/webhook.py`, `db/supabase.py`, `DashboardApp.jsx`, `TodayPanel.jsx`
 
-### Priority 4 — Missed Response Detection
+### Priority 4 — Missed Response Detection ✅ CODE COMPLETE
 
 Market research: "missed follow-ups reduced" is a top-5 ROI metric SMEs care about. Unanswered emails are invisible lost revenue.
 
-10. **Detect unanswered inbound emails** — After classification, if no reply thread exists within a configurable window (default 4h business hours), create a `missed_response` pending action in the approval queue
-    - Track `last_inbound_at` and `replied_at` per thread in a new `thread_state` table (or column on approvals)
-    - Surface as an amber-badge card in the dashboard: "3 enquiries not yet replied to"
-    - *Files*: `gmail/webhook.py`, `db/supabase.py`, new `api/threads.py`, `ApprovalCard.jsx`
-11. **Missed response job** — `jobs/handlers.py` handler `handle_missed_response_check` runs every 2h, queries threads with no reply, creates or surfaces pending action cards
-12. **Dismiss / snooze** — Owner can mark a missed response as "handled outside Olivander" to clear the badge
+10. **Detect unanswered inbound emails ✅ DONE** — After actionable inbound classification, Gmail webhook queues a 4h `missed_response_check` job. The job skips if the original approval is approved/rejected/failed; otherwise it creates a non-sending `missed_response` approval card.
+    - Uses existing approval/job state rather than a new table, so no migration is required.
+    - *Files*: `gmail/webhook.py`, `jobs/handlers.py`, `db/supabase.py`, `ApprovalCard.jsx`
+11. **Missed response job ✅ DONE** — `jobs/handlers.py:handle_missed_response_check` checks pending response state and dedups pending missed-response cards.
+12. **Dismiss / mark handled ✅ DONE** — Approval card says "Mark handled" / "Dismiss" for missed-response actions. Dashboard and email-tap approval paths mark handled without sending an email.
 
 ### Priority 5 — ROI Outcomes Dashboard
 

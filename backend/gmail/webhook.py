@@ -29,6 +29,7 @@ from rate_limit import limiter
 
 router = APIRouter(tags=["gmail-webhook"])
 logger = logging.getLogger("olivander")
+_MISSED_RESPONSE_DELAY_SECONDS = 4 * 3600
 
 
 def _decode_pubsub_message(payload: dict[str, Any]) -> dict[str, Any]:
@@ -206,6 +207,17 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
                     webhook_secret=WEBHOOK_SECRET,
                 )
 
+        _enqueue_missed_response_check(
+            business_id=business_id,
+            sender_name=msg.get("from_name") or msg.get("from") or "",
+            sender_email=msg.get("from") or "",
+            subject=msg.get("subject") or "",
+            original_body=msg.get("snippet") or "",
+            original_email_id=msg_id,
+            thread_id=thread_id,
+            classification=classification,
+        )
+
         # Enqueue follow-up sequence for new leads
         if classification == "new_lead":
             approval_id = str(approval.get("id")) if approval else None
@@ -254,6 +266,46 @@ def _process_gmail_notification(gmail_address: str, history_id: str) -> None:
 
     except Exception as error:
         logger.error("Failed to process Gmail notification: %s", error, exc_info=True)
+
+
+def _enqueue_missed_response_check(
+    *,
+    business_id: str,
+    sender_name: str,
+    sender_email: str,
+    subject: str,
+    original_body: str,
+    original_email_id: str,
+    thread_id: str | None,
+    classification: str,
+) -> None:
+    """Queue a delayed check so unanswered inbound threads surface later."""
+    if not business_id or not original_email_id:
+        return
+
+    try:
+        enqueue_job(
+            job_type="missed_response_check",
+            payload={
+                "business_id": business_id,
+                "sender_name": sender_name,
+                "sender_email": sender_email,
+                "subject": subject,
+                "original_body": original_body[:500],
+                "original_email_id": original_email_id,
+                "thread_id": thread_id,
+                "classification": classification,
+            },
+            delay_seconds=_MISSED_RESPONSE_DELAY_SECONDS,
+            business_id=business_id,
+        )
+    except Exception as error:
+        logger.warning(
+            "Could not enqueue missed-response check for %s message %s: %s",
+            business_id,
+            original_email_id,
+            error,
+        )
 
 
 def _enqueue_new_lead_follow_ups(

@@ -239,12 +239,15 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Dedup order is Gmail `thread_id`, then sender email; existing leads are linked rather than duplicated.
 - Dashboard lead count refreshes during inbox polling and the "New leads" metric opens the Leads panel.
 
-**Next code build: Priority 4 — Missed Response Detection**
-- Track thread response state for inbound messages.
-- Surface unanswered enquiries as approval/action cards.
-- Add dismiss/snooze handling so owners can clear emails handled outside Olivander.
+**Priority 4 — Missed Response Detection ✅ code complete**
+- Gmail webhook queues a 4h missed-response check after actionable inbound messages.
+- Job handler skips handled approvals and creates a non-sending `missed_response` approval card when no approved/rejected response exists.
+- Dashboard/email-tap approval paths mark missed-response cards handled without sending.
 
-**Priority 5 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for ROI outcomes dashboard, voice calibration, and calendar UI.
+**Next code build: Priority 5 — ROI Outcomes Dashboard**
+- `GET /api/outcomes/summary` for rolling 30-day proof-of-value metrics.
+- Dashboard `OutcomesPanel` with plain number metrics only.
+- Derive counts from existing activity/jobs/approvals before adding new tracking columns.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -355,6 +358,7 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Owner confirmed Xero setup is complete on 2026-05-05. Docs now treat the Xero redirect/setup item as owner-confirmed, while the live invoice creation → approval → send E2E remains unverified.
 - Built **Priority 2 — Unpaid Invoices Panel + Manual Reminder** in code: live Xero unpaid invoice endpoint, dashboard panel, manual reminder approval queue, duplicate guard against pending reminder approvals and scheduled chasers within 48h. Verification: backend invoice/security tests passed; frontend production build passed; Playwright smoke checked desktop/mobile empty state.
 - Built **Priority 3 — Email → Lead Auto-Link** in code: new-lead Gmail webhook processing now creates or links `lead_pipeline` rows, dedups by thread/email, links approval IDs, refreshes dashboard lead count during inbox polling, and routes the "New leads" metric to the Leads panel. Verification: backend lead/security/invoice tests passed; frontend production build passed.
+- Built **Priority 4 — Missed Response Detection** in code: actionable inbound Gmail processing queues delayed missed-response checks, job handler creates non-sending `missed_response` approval cards when the original approval remains unhandled, and dashboard/email-tap approvals can mark those cards handled without sending. Verification: backend missed-response/lead/invoice/security tests passed; frontend production build passed.
 
 ### 2026-05-03
 

@@ -112,6 +112,21 @@ Content-Type: application/json
 }
 ```
 
+### Missed Response Approvals
+
+Delayed Gmail checks can create approvals with:
+
+```json
+{
+  "type": "missed_response",
+  "subject": "Missed response - Customer subject",
+  "agentResponse": "Review the original pending draft...",
+  "tier": "Tier 3 — owner approval required"
+}
+```
+
+Approving a `missed_response` approval marks it handled and sends no email. Rejecting it dismisses the flag.
+
 ---
 
 ## Invoices

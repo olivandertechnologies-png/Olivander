@@ -307,6 +307,7 @@ export function normaliseBackendApproval(row) {
   return {
     id: String(row.id ?? createId('approval')),
     backendId: String(row.id ?? ''),
+    type: row.type ?? 'email_reply',
     taskId: null,
     sourceEmailId: row.sourceEmailId ?? null,
     senderName: row.senderName ?? 'Unknown sender',
@@ -386,4 +387,3 @@ export function createMockAgentPlan(request, sourceEmail = null) {
     clarifyingQuestion: buildClarifyingQuestion(request),
   };
 }
-
