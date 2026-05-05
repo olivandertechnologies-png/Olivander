@@ -114,6 +114,71 @@ Content-Type: application/json
 
 ---
 
+## Invoices
+
+### List Unpaid Xero Invoices
+```
+GET /api/invoices/unpaid
+```
+
+Queries Xero live for authorised sales invoices with an outstanding balance.
+
+**Response:**
+```json
+{
+  "invoices": [
+    {
+      "invoice_id": "uuid",
+      "invoice_number": "INV-001",
+      "contact_name": "Customer Ltd",
+      "contact_email": "accounts@example.co.nz",
+      "amount_due": 240.0,
+      "currency_code": "NZD",
+      "due_date": "2026-05-01",
+      "days_overdue": 4,
+      "status": "AUTHORISED"
+    }
+  ],
+  "count": 1,
+  "total_due": 240.0,
+  "currency_code": "NZD"
+}
+```
+
+### Queue Manual Invoice Reminder
+```
+POST /api/invoices/{invoice_id}/reminder
+Content-Type: application/json
+
+{
+  "note": "Optional owner instruction for the draft"
+}
+```
+
+Fetches the invoice from Xero live, drafts a payment reminder, and queues it as an approval. Nothing is sent until the owner approves.
+
+**Response:**
+```json
+{
+  "status": "pending_approval",
+  "approval_id": "uuid",
+  "invoice": {
+    "invoice_id": "uuid",
+    "invoice_number": "INV-001",
+    "contact_name": "Customer Ltd",
+    "amount_due": 240.0
+  }
+}
+```
+
+**Status codes:**
+- `200` - Reminder approval queued
+- `401` - Xero is not connected
+- `409` - Invoice has no outstanding balance, is not authorised, or a reminder/chaser is already pending
+- `422` - Xero contact has no email address
+
+---
+
 ## Memory / Business Context
 
 ### Get Business Context

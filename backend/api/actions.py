@@ -396,7 +396,8 @@ async def approve_action(
 
         # ── Email (email_reply or booking_reply) ────────────────────────────
         original_message_id = approval.get("original_email_id")
-        if original_message_id:
+        external_source = str(original_message_id or "").startswith("xero_invoice:")
+        if original_message_id and not external_source:
             try:
                 original = get_message(access_token, original_message_id)
                 to_email = original.get("from", "unknown@example.com")
@@ -405,11 +406,11 @@ async def approve_action(
             except Exception as e:
                 logger.error("Failed to get original message: %s", e)
                 to_email = approval.get("who", "unknown@example.com")
-                subject = "Re: Your inquiry"
+                subject = approval.get("what") or "Re: Your inquiry"
                 thread_id = None
         else:
             to_email = approval.get("who", "unknown@example.com")
-            subject = "Re: Your inquiry"
+            subject = approval.get("what") or "Re: Your inquiry"
             thread_id = None
 
         draft_body = approval.get("edited_content") or approval.get("draft_content") or ""

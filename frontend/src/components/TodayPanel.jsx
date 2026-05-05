@@ -175,7 +175,7 @@ export default function TodayPanel({
           value={plus ? money(stats.moneyAtRisk) : 'Locked'}
           detail={plus ? 'Overdue invoices' : 'Invoice chasing'}
           locked={!plus}
-          onClick={plus ? () => onNavigate('jobs') : onUpgrade}
+          onClick={plus ? () => onNavigate('invoices') : onUpgrade}
         />
         <MetricCard
           label="Calendar gaps"

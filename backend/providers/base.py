@@ -166,6 +166,12 @@ class AccountingProvider(ABC):
         """
 
     @abstractmethod
+    def list_unpaid(
+        self, access_token: str, tenant_id: str
+    ) -> list[dict[str, Any]]:
+        """Return authorised unpaid sales invoices, querying live accounting data."""
+
+    @abstractmethod
     def list_overdue(
         self, access_token: str, tenant_id: str, days: int = 7
     ) -> list[dict[str, Any]]:

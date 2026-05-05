@@ -6,6 +6,7 @@ export const PANEL_TITLES = {
   home: 'Today',
   inbox: 'Inbox',
   jobs: 'Jobs',
+  invoices: 'Invoices',
   tasks: 'Tasks',
   approvals: 'Approval Centre',
   activity: 'Activity',

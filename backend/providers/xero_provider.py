@@ -54,6 +54,12 @@ class XeroProvider(AccountingProvider):
         from xero.client import get_invoice_status
         return get_invoice_status(access_token, tenant_id, invoice_id)
 
+    def list_unpaid(
+        self, access_token: str, tenant_id: str
+    ) -> list[dict[str, Any]]:
+        from xero.client import list_unpaid_invoices
+        return list_unpaid_invoices(access_token, tenant_id)
+
     def list_overdue(
         self, access_token: str, tenant_id: str, days: int = 7
     ) -> list[dict[str, Any]]:

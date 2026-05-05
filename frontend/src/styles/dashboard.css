@@ -886,6 +886,13 @@ textarea::placeholder {
   line-height: 1.4;
 }
 
+.inline-success {
+  margin-bottom: 8px;
+  color: var(--success);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .panel-heading {
   margin-bottom: 14px;
 }
@@ -2899,6 +2906,142 @@ textarea::placeholder {
   border-radius: 10px;
 }
 
+/* ── Unpaid Invoices Panel ────────────────────────────────────────────────── */
+
+.unpaid-invoices-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.unpaid-invoices__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  gap: 10px;
+}
+
+.unpaid-invoices__summary div {
+  padding: 14px;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.unpaid-invoices__summary span {
+  display: block;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.unpaid-invoices__summary strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.unpaid-invoices__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--br);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.unpaid-invoices__table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.unpaid-invoices__table th,
+.unpaid-invoices__table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--br);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.unpaid-invoices__table th {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.unpaid-invoices__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.unpaid-invoices__table tbody tr:nth-child(even) {
+  background: var(--surface);
+}
+
+.unpaid-invoices__table tbody tr.is-queued {
+  background: var(--act50);
+}
+
+.unpaid-invoices__table td strong,
+.unpaid-invoices__table td span {
+  display: block;
+}
+
+.unpaid-invoices__table td strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.unpaid-invoices__table td span {
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.unpaid-invoices__amount {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.invoice-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.invoice-overdue-badge--neutral {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.invoice-overdue-badge--warning {
+  background: var(--wbg);
+  color: var(--warn);
+}
+
+.invoice-overdue-badge--danger {
+  background: var(--dbg);
+  color: var(--danger);
+}
+
+.unpaid-invoices__action-cell {
+  width: 168px;
+}
+
+.invoice-reminder-button {
+  width: 100%;
+  justify-content: center;
+}
+
 /* ── First Customer Shell ─────────────────────────────────────────────────── */
 
 .panel-title-row,
@@ -3807,7 +3950,8 @@ textarea::placeholder {
   .today-metrics-grid,
   .manual-message-form__grid,
   .plan-settings-grid,
-  .job-add-form {
+  .job-add-form,
+  .unpaid-invoices__summary {
     grid-template-columns: 1fr;
   }
 

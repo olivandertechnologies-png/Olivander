@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: current session is committing/pushing all tracked changes requested by the owner, including the Dockerfile Debian Trixie package fix, Render/Gmail deployment wiring, Xero setup status update, PRD/status docs, and handoff updates.
+- **Git**: working tree has local Priority 2 unpaid-invoices changes pending review/commit.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -133,8 +133,8 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 - **Xero**: owner confirmed Xero integration setup on 2026-05-05. Treat setup as owner-confirmed, not externally verified; live invoice creation → approval → send E2E still needs testing.
 - **Build priorities** (as of 2026-05-05 — see `PLATFORM_STATUS.md § Prioritised Next Steps` for full detail):
   1. MVP infra: Gmail Pub/Sub verification + live Gmail/Xero E2E tests. Xero setup is owner-confirmed.
-  2. Unpaid invoices panel + manual reminder (new feature — not yet built)
-  3. Email → lead auto-link
+  2. Unpaid invoices panel + manual reminder is code-complete; live Xero E2E still unverified.
+  3. Email → lead auto-link is the next code build.
   4. Missed response detection (new feature — not yet built)
   5. ROI outcomes dashboard (new feature — not yet built)
   6. Voice calibration → Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
@@ -142,6 +142,61 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
 ## Rolling Handoff Log
+
+### 2026-05-05 - Codex - Unpaid Invoices Panel + Manual Reminder
+
+User request:
+
+- Continue with the next overall development item and record the work.
+
+Work completed:
+
+- Built `GET /api/invoices/unpaid` to query Xero live for authorised unpaid invoices, normalise invoice number/contact/amount/due date/days overdue, and return dashboard summary totals.
+- Built `POST /api/invoices/{invoice_id}/reminder` to fetch the invoice from Xero live, draft a payment reminder with Groq, and queue an approval-first `email_reply`; nothing sends until owner approval.
+- Added duplicate protection: blocks manual reminder if a pending reminder approval exists or an automated `chase_invoice` job is scheduled within 48h.
+- Updated automated invoice chasers to use the same invoice source ID and skip if a reminder approval is already pending.
+- Updated approval send fallback so non-Gmail-source approvals, including invoice reminders, use the approval title as the outgoing subject instead of `Re: Your inquiry`.
+- Added dashboard `Invoices` nav item and `UnpaidInvoicesPanel` with Xero disconnected empty state, unpaid summary, unpaid table, days-overdue badges, refresh, and per-row "Send reminder".
+- Updated `PLATFORM_STATUS.md`, `docs/build_report.md`, and `docs/api_reference.md`.
+
+Files changed:
+
+- `backend/api/actions.py`
+- `backend/api/invoices.py`
+- `backend/db/supabase.py`
+- `backend/jobs/handlers.py`
+- `backend/providers/base.py`
+- `backend/providers/xero_provider.py`
+- `backend/tests/test_invoices.py`
+- `backend/tests/test_security.py`
+- `backend/xero/client.py`
+- `frontend/src/components/DashboardApp.jsx`
+- `frontend/src/components/TodayPanel.jsx`
+- `frontend/src/components/UnpaidInvoicesPanel.jsx`
+- `frontend/src/components/icons.jsx`
+- `frontend/src/styles/dashboard.css`
+- `frontend/src/utils/constants.js`
+- `PLATFORM_STATUS.md`
+- `docs/api_reference.md`
+- `docs/build_report.md`
+- `docs/agent_handoff.md`
+
+Verification:
+
+- Passed: `PYTHONPATH=. /Users/ollie/.local/bin/uv run --python /Users/ollie/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 --with-requirements requirements.txt pytest tests/test_security.py tests/test_invoices.py -q` from `backend/` (10 tests).
+- Passed: `npm run build` from `frontend/`.
+- Browser smoke test via Playwright at `http://127.0.0.1:5174/`: desktop and mobile Invoices panel empty/Xero-disconnected state rendered cleanly. Temporary Playwright screenshots were removed from the repo.
+
+Known blockers or risks:
+
+- Live Xero API calls were not tested against the real connected account in this session.
+- Live invoice reminder approval → Gmail send E2E remains unverified.
+- Gmail Pub/Sub watch activation and inbound-email E2E are still unverified.
+- Vite dev server was started on port 5174 because 5173 was already in use.
+
+Exact next recommended action:
+
+- Run the live Xero E2E against the connected account: open Invoices panel, verify unpaid invoices load, queue one reminder, approve it, and confirm the Gmail reminder sends. Then build Priority 3 Email → Lead Auto-Link.
 
 ### 2026-05-05 - Codex - Commit Xero Setup + Dockerfile Fix
 

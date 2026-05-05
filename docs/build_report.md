@@ -228,12 +228,18 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 4. End-to-end test: inbound email → approve from phone → reply sent
 5. End-to-end test: invoice creation → Xero draft → approve → invoice sent
 
-**Priority 2 — Unpaid invoices panel + manual reminder**
-- `GET /api/invoices/unpaid` querying Xero live, sorted by oldest due date
-- `UnpaidInvoicesPanel` in dashboard with days-overdue colouring and per-row "Send Reminder" button
-- Manual reminder creates an approval action (owner reviews draft before anything sends)
+**Priority 2 — Unpaid invoices panel + manual reminder ✅ code complete**
+- `GET /api/invoices/unpaid` queries Xero live and returns unpaid authorised invoices sorted by oldest due date.
+- `UnpaidInvoicesPanel` is wired into the dashboard with days-overdue colouring and per-row "Send reminder".
+- Manual reminder creates an approval action; owner reviews/edits the draft before anything sends.
+- Remaining verification: live Xero account E2E against the connected customer account.
 
-**Priority 3 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for the full list including email → lead auto-link, missed response detection, ROI outcomes dashboard, voice calibration, and calendar UI.
+**Next code build: Priority 3 — Email → Lead Auto-Link**
+- Auto-create leads from `new_lead` classified emails.
+- Link lead `thread_id` to Gmail thread IDs for deduplication.
+- Show a lead-count badge when inbound email creates a new lead.
+
+**Priority 4 onwards** — see `PLATFORM_STATUS.md § Prioritised Next Steps` for missed response detection, ROI outcomes dashboard, voice calibration, and calendar UI.
 
 ## Implementation Plan: Sent-Mail Voice Calibration
 
@@ -342,6 +348,7 @@ See `PLATFORM_STATUS.md` for the full ordered priority list. Current top priorit
 - Clarified document responsibilities: PLATFORM_STATUS.md owns feature status and priorities; build_report.md owns PRD specs and implementation plans.
 - Updated CLAUDE.md and AGENTS.md: removed stale "Pending DB Migrations" section (all 001–010 confirmed applied 2026-05-01); added sync warning between the two files.
 - Owner confirmed Xero setup is complete on 2026-05-05. Docs now treat the Xero redirect/setup item as owner-confirmed, while the live invoice creation → approval → send E2E remains unverified.
+- Built **Priority 2 — Unpaid Invoices Panel + Manual Reminder** in code: live Xero unpaid invoice endpoint, dashboard panel, manual reminder approval queue, duplicate guard against pending reminder approvals and scheduled chasers within 48h. Verification: backend invoice/security tests passed; frontend production build passed; Playwright smoke checked desktop/mobile empty state.
 
 ### 2026-05-03
 

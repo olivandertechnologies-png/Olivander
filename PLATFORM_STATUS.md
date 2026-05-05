@@ -1,5 +1,5 @@
 # Olivander Platform Status
-*Last updated: 2026-05-05 — market research integrated; Xero setup owner-confirmed; missed response detection and ROI dashboard added to build plan*
+*Last updated: 2026-05-05 — unpaid invoices panel built; Xero setup owner-confirmed; missed response detection and ROI dashboard added to build plan*
 
 ---
 
@@ -10,7 +10,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Workflow | Research signal | Build status |
 |----------|-----------------|--------------|
 | Invoice reminders & AR chasing (automated) | Xero data: avg 24.8-day payment delay; most measurable ROI | ✅ Built (Day-7, Day-14, Day-21 chasers) |
-| Unpaid invoices panel + manual reminder | Owner needs to see AR state and trigger reminders on demand, not just wait for auto-chasers | ❌ Missing |
+| Unpaid invoices panel + manual reminder | Owner needs to see AR state and trigger reminders on demand, not just wait for auto-chasers | ✅ Built in code; live Xero E2E unverified |
 | Customer follow-up & new lead sequences | 10 hrs/wk lost to admin; missed follow-up = lost revenue | ✅ Built (+48h, +5d, +10d sequences) |
 | Quote follow-up | Directly linked to won/lost jobs | ✅ Built (Day-5 chaser + PDF) |
 | Email triage & draft reply | Core time sink; trust-building feature | ✅ Built |
@@ -34,7 +34,7 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | AI pipeline (Groq) | **Live** | `llama-3.3-70b-versatile` — classify, draft, plan, learn |
 | Gmail OAuth | **Working** | Confirmed 2026-05-01 — callback 200 OK, business upserted, Connected shown in UI |
 | Google Calendar | **Implemented** | `gcal/client.py` — slot proposals, event creation, list events |
-| Xero | **Implemented; setup owner-confirmed; invoice E2E unverified** | OAuth + invoice creation + chaser logic in code. Owner confirmed Xero setup on 2026-05-05; live invoice approval/send test still required |
+| Xero | **Implemented; setup owner-confirmed; invoice E2E unverified** | OAuth, invoice creation, unpaid-invoices view, manual reminders, and chaser logic in code. Owner confirmed Xero setup on 2026-05-05; live invoice approval/send test still required |
 | Provider abstraction | **Done** | `providers/base.py` + gmail/gcal/xero concrete providers |
 | Job queue | **Done** | `jobs/queue.py` — 30s polling loop, 4-worker thread pool |
 | Learning loop | **Done** | `agent/learning.py` — edit pattern extraction + memory promotion |
@@ -91,8 +91,8 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 | Natural language → quote | ✅ Done | `api/quotes.py` |
 | Quote PDF (WeasyPrint, A4, inline CSS) | ✅ Done | `api/quotes.py:generate_quote_pdf()` |
 | Quote follow-up (Day-5) | ✅ Done | `jobs/handlers.py:handle_follow_up_email()` |
-| Unpaid invoices panel (live Xero query) | ❌ Missing | No UI to see outstanding invoices; owner cannot see AR state |
-| Manual reminder trigger from dashboard | ❌ Missing | No on-demand reminder; only automated Day-7/14/21 chasers exist |
+| Unpaid invoices panel (live Xero query) | ✅ Done | `GET /api/invoices/unpaid`, `xero/client.py:list_unpaid_invoices()`, `UnpaidInvoicesPanel.jsx` |
+| Manual reminder trigger from dashboard | ✅ Done | `POST /api/invoices/{invoice_id}/reminder` queues an `email_reply` approval; duplicate guard checks pending approval and 48h scheduled chaser |
 
 ### Calendar
 
@@ -253,17 +253,17 @@ Market research (Wanaka A&P Show survey + secondary sources) identified the work
 5. **Run live Xero invoice E2E**
    - Create invoice from owner instruction → queue approval → approve → confirm invoice sent in Xero
 
-### Priority 2 — Unpaid Invoices Panel + Manual Reminder
+### Priority 2 — Unpaid Invoices Panel + Manual Reminder ✅ CODE COMPLETE
 
-The automated Day-7/14/21 chasers work invisibly. The owner has no way to see the current AR state or send a reminder outside that schedule. This is the most visible part of the invoice workflow.
+The automated Day-7/14/21 chasers work invisibly. The owner now has a dashboard panel to see current AR state and queue reminders outside that schedule. Live Xero E2E still needs verification against the connected customer account.
 
-5. **`GET /api/invoices/unpaid`** — Query Xero live for all AUTHORISED invoices with `AmountDue > 0`, return sorted by oldest due date first. Fields: invoice number, contact name, amount due, due date, days overdue.
-   - *Files*: new endpoint in `api/invoices.py`, `xero/client.py:list_unpaid_invoices()`
-6. **UnpaidInvoicesPanel in dashboard** — Table showing each unpaid invoice with: contact name, amount due (NZD), days overdue (amber if 1–14, red if 15+), and a "Send Reminder" button per row.
-   - *Files*: new `components/UnpaidInvoicesPanel.jsx`, wired into `DashboardApp.jsx`
-7. **Manual reminder trigger** — "Send Reminder" creates an approval action (same flow as automated chaser): Groq drafts a payment reminder email, queued for owner approval before anything is sent. Owner can edit the draft before approving.
-   - *Files*: `api/invoices.py`, `api/actions.py`, `notifications/email_sender.py`
-8. **Dedup guard** — If an automated chaser job is already scheduled for that invoice within 48h, show a warning rather than creating a duplicate approval.
+5. **`GET /api/invoices/unpaid` ✅ DONE** — Queries Xero live for AUTHORISED invoices with `AmountDue > 0`, sorted by oldest due date first.
+   - *Files*: `api/invoices.py`, `xero/client.py:list_unpaid_invoices()`
+6. **UnpaidInvoicesPanel in dashboard ✅ DONE** — Table shows contact name, amount due, due date, days overdue, and per-row "Send reminder" button.
+   - *Files*: `components/UnpaidInvoicesPanel.jsx`, `DashboardApp.jsx`, `dashboard.css`
+7. **Manual reminder trigger ✅ DONE** — "Send reminder" creates an `email_reply` approval; owner can edit before approving. Approved reminders send via the existing Gmail approval path.
+   - *Files*: `api/invoices.py`, `api/actions.py`
+8. **Dedup guard ✅ DONE** — Blocks duplicate reminder if a pending invoice reminder approval exists or an automated chaser is scheduled within 48h.
 
 ### Priority 3 — Email → Lead Auto-Link
 

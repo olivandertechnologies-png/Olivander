@@ -208,6 +208,17 @@ export function MailIcon() {
   );
 }
 
+export function InvoiceIcon() {
+  return (
+    <IconBase>
+      <path d="M4.1 2.7h7.8v10.6l-1.3-.8-1.3.8-1.3-.8-1.3.8-1.3-.8-1.3.8V2.7Z" />
+      <path d="M5.8 5.4h4.4" />
+      <path d="M5.8 8h4.4" />
+      <path d="M5.8 10.6h2.4" />
+    </IconBase>
+  );
+}
+
 export function ClockIcon() {
   return (
     <IconBase>

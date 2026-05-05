@@ -8,10 +8,12 @@ import ApprovalsPanel from './ApprovalsPanel.jsx';
 import ActivityPanel from './ActivityPanel.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import LeadPipelinePanel from './LeadPipelinePanel.jsx';
+import UnpaidInvoicesPanel from './UnpaidInvoicesPanel.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import {
   HouseIcon, TaskListIcon, CheckCircleIcon, LinesIcon, LeadPipelineIcon,
   ArrowLeftIcon, GearIcon, DatabaseIcon, FunnelIcon, SunIcon, LogoutIcon, ShieldIcon, MailIcon,
+  InvoiceIcon,
 } from './icons.jsx';
 
 import {
@@ -632,6 +634,25 @@ export default function DashboardApp() {
     });
     if (response.status === 401 && sessionToken) { clearSessionState(); requestPanel('home'); }
     return response;
+  }
+
+  async function refreshPendingApprovals({ merge = false } = {}) {
+    if (!sessionToken) {
+      setApprovals([]);
+      return [];
+    }
+    const response = await fetchProtected('/api/approvals?status=pending');
+    if (response.status === 401 || !response.ok) return [];
+    const rows = await response.json();
+    if (!Array.isArray(rows)) return [];
+    const normalised = rows.map((row) => normaliseBackendApproval(row));
+    setApprovals((current) => {
+      if (!merge) return normalised;
+      const existingIds = new Set(current.map((approval) => approval.backendId).filter(Boolean));
+      const additions = normalised.filter((approval) => !existingIds.has(approval.backendId));
+      return additions.length ? [...additions, ...current] : current;
+    });
+    return normalised;
   }
 
   async function syncGoogleConnectionStatus({ silent = false } = {}) {
@@ -1321,6 +1342,7 @@ export default function DashboardApp() {
     { id: 'home', label: 'Today', icon: <HouseIcon />, badge: todayOpenActionCount || null },
     { id: 'inbox', label: 'Inbox', icon: <MailIcon />, badge: firstCustomerInbox.length || null },
     { id: 'jobs', label: 'Jobs', icon: <LeadPipelineIcon />, badge: firstCustomerJobsToday.length || null },
+    { id: 'invoices', label: 'Invoices', icon: <InvoiceIcon /> },
     { id: 'tasks', label: 'Tasks', icon: <TaskListIcon />, badge: activeTaskCount || null },
     { id: 'activity', label: 'Activity', icon: <LinesIcon /> },
   ];
@@ -1454,6 +1476,15 @@ export default function DashboardApp() {
                 onAddNote={handleAddJobNote}
                 onQueueFollowUp={handleQueueJobFollowUp}
                 onUpgrade={() => openSettings('plan')}
+              />
+            ) : null}
+
+            {activePanel === 'invoices' ? (
+              <UnpaidInvoicesPanel
+                fetchProtected={fetchProtected}
+                xeroConnected={xeroConnected}
+                onOpenConnections={() => openSettings('connections')}
+                onReminderQueued={() => void refreshPendingApprovals()}
               />
             ) : null}
 

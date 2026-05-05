@@ -139,7 +139,9 @@ def handle_follow_up_email(job: dict[str, Any]) -> None:
         create_approval,
         get_business_by_id,
         get_memory_profile,
+        invoice_source_id,
         log_activity,
+        pending_invoice_reminder_approval_exists,
     )
 
     payload = job.get("payload") or {}
@@ -327,6 +329,13 @@ def handle_chase_invoice(job: dict[str, Any]) -> None:
         )
         return
 
+    if pending_invoice_reminder_approval_exists(business_id, xero_invoice_id):
+        logger.info(
+            "chase_invoice: invoice %s already has a pending reminder approval — skipping",
+            xero_invoice_id,
+        )
+        return
+
     # Draft the chaser
     business_info = get_business_by_id(business_id) or {}
     memory = get_memory_profile(business_id)
@@ -366,6 +375,7 @@ Write the email body only. No subject line. No headers.""".strip()
         who=f"{contact_name} <{contact_email}>" if contact_email else contact_name,
         what=f"Invoice chaser — {contact_name} ({amount_formatted})",
         why=f"Invoice {xero_invoice_id} is overdue (step {step} of 3). Xero status: {xero_status}.",
+        original_email_id=invoice_source_id(xero_invoice_id),
         draft_content=draft_body,
     )
 

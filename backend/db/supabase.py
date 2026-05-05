@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from supabase import Client, create_client
@@ -192,6 +193,49 @@ def approval_exists_for_message(business_id: str, gmail_message_id: str) -> bool
         .select("id")
         .eq("business_id", business_id)
         .eq("original_email_id", gmail_message_id)
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
+
+
+def invoice_source_id(invoice_id: str) -> str:
+    """Stable source ID for approval deduplication around a Xero invoice."""
+    return f"xero_invoice:{invoice_id}"
+
+
+def pending_invoice_reminder_approval_exists(business_id: str, invoice_id: str) -> bool:
+    """Return True if a reminder for this invoice is already awaiting approval."""
+    response = (
+        get_supabase_client()
+        .table("approvals")
+        .select("id")
+        .eq("business_id", business_id)
+        .eq("status", "pending")
+        .eq("original_email_id", invoice_source_id(invoice_id))
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
+
+
+def pending_invoice_chaser_job_exists(
+    business_id: str,
+    invoice_id: str,
+    *,
+    within_hours: int = 48,
+) -> bool:
+    """Return True if a scheduled invoice chaser is already due soon."""
+    window_end = (datetime.now(timezone.utc) + timedelta(hours=within_hours)).isoformat()
+    response = (
+        get_supabase_client()
+        .table("job_queue")
+        .select("id")
+        .eq("business_id", business_id)
+        .eq("job_type", "chase_invoice")
+        .eq("status", "pending")
+        .lte("run_at", window_end)
+        .contains("payload", {"xero_invoice_id": invoice_id})
         .limit(1)
         .execute()
     )
