@@ -123,7 +123,7 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
 
 *Updated 2026-05-05*
 
-- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`; Priority 4 missed-response detection was committed/pushed as `5315afc`. Working tree now has local Priority 5 ROI outcomes dashboard changes pending commit.
+- **Git**: Priority 2 unpaid-invoices work was committed/pushed as `b19b98e`; Priority 3 email-to-lead auto-link was committed/pushed as `017a1a2`; Priority 4 missed-response detection was committed/pushed as `5315afc`; Priority 5 ROI outcomes dashboard was committed locally as `7444c81` and is ready to push.
 - **Google OAuth**: confirmed working 2026-05-01. Business `olivandertechnologies@gmail.com`, ID `c8e6dea8-fa44-4bea-8f3e-dff7b5a43eb6`.
 - **DB migrations**: all 10 (001–010) confirmed applied to Supabase as of 2026-05-01.
 - **Pub/Sub**: topic `projects/olivandertechnologies/topics/gmail-watch` and push subscription `gmail-watch-push` created. Gmail service account has Publisher role. Verify push endpoint is `https://olivander.onrender.com/webhook/gmail?token=<WEBHOOK_SECRET>` — not the stale `olivander-api.onrender.com` host.
@@ -136,8 +136,8 @@ Write this to `docs/agent_handoff.md` under a new dated entry before stopping:
   2. Unpaid invoices panel + manual reminder is code-complete; live Xero E2E still unverified.
   3. Email → lead auto-link is code-complete; live Gmail E2E still unverified.
   4. Missed response detection is code-complete; live Gmail E2E still unverified.
-  5. ROI outcomes dashboard is code-complete locally; commit pending.
-  6. Voice calibration is the next code build after Priority 5 is committed, then Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
+  5. ROI outcomes dashboard is code-complete and committed locally; push pending.
+  6. Voice calibration is the next code build after Priority 5 is pushed, then Calendar Command Centre UI → Workspace/Approvals integration → Trust tiers
 - **Not in scope for Phase 1**: social media automation, Shopify, SMS, staff rostering, supplier coordination.
 - **Doc structure**: `PLATFORM_STATUS.md` owns feature status and priorities; `docs/build_report.md` owns PRD specs and implementation plans. `CLAUDE.md` and `AGENTS.md` are identical — edit both when changing either.
 
@@ -152,6 +152,7 @@ User request:
 Work completed:
 
 - Committed and pushed Priority 4 missed-response detection as `5315afc` (`Add missed response detection`).
+- Committed Priority 5 ROI outcomes dashboard locally as `7444c81` (`Add ROI outcomes dashboard`).
 - Added `GET /api/outcomes/summary` for rolling 30-day proof-of-value metrics.
 - Added pure outcome counting in `db.supabase.build_outcomes_summary()` from existing approvals, completed jobs, and email-created leads. No migration or new tracking columns required.
 - Added `OutcomesPanel` to the Today dashboard with the required headline and six plain-number metrics.
@@ -185,7 +186,7 @@ Known blockers or risks:
 
 Exact next recommended action:
 
-- Commit/push Priority 5. Next code build is Priority 6 Sent-Mail Voice Calibration unless live Gmail/Xero E2E testing takes priority.
+- Push Priority 5. Next code build is Priority 6 Sent-Mail Voice Calibration unless live Gmail/Xero E2E testing takes priority.
 
 ### 2026-05-05 - Codex - Missed Response Detection
 
